@@ -619,6 +619,20 @@ code {
 .reg-row .rai-badge { display: inline-block; font-size: 10px; font-weight: var(--fw-medium); background: var(--accent); color: #fff; border-radius: 2px; padding: 0 4px; margin-left: 5px; vertical-align: middle; }
 .reg-row .rreason { display: block; font-size: var(--fs-note); color: var(--muted); margin-top: 3px; }
 .ai-err { background: var(--ng-bg); color: var(--ng-text); border-radius: 4px; padding: 9px 12px; font-size: var(--fs-note); }
+.ai-hint { background: var(--surface2); color: var(--muted); border: 1px dashed var(--border); border-radius: 5px; padding: 11px 13px; font-size: var(--fs-note); line-height: 1.6; }
+.ai-hint b { color: var(--text); }
+.ai-bridge { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 11px 13px; margin-bottom: 12px; }
+.ai-bridge-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ai-bridge-bar + .ai-bridge-bar { margin-top: 8px; }
+.ai-bridge-hint { font-size: var(--fs-note); color: var(--muted); }
+.ai-bridge textarea {
+  width: 100%; height: 110px; margin: 8px 0; resize: vertical;
+  border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px;
+  font-family: 'Courier New','MS Gothic',monospace; font-size: var(--fs-note);
+  line-height: 1.5; color: var(--text); background: var(--surface); outline: none;
+}
+.ai-bridge textarea:focus { border-color: var(--accent); }
+.ai-bridge .step { font-weight: var(--fw-medium); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -750,7 +764,8 @@ code {
         <span class="src-pill" id="rule-src">ルール: 読み込み中…</span>
       </div>
       <div class="set-note" id="ai-privacy-note">
-        <b>プライバシー：</b>既定は完全ローカル（外部送信なし）。APIキーを設定して AI 示唆を有効にした場合のみ、<b>チェック対象テキストとシート由来ルールが Anthropic API（api.anthropic.com）へ送信</b>されます。機密原稿はキーを空にして運用してください。シート取得はルールを読むだけで原稿は送りません。
+        <b>プライバシー：</b>既定は完全ローカル（外部送信なし）。APIキーを設定して AI 示唆を有効にした場合のみ、<b>チェック対象テキストとシート由来ルールが Anthropic API（api.anthropic.com）へ送信</b>されます。機密原稿はキーを空にして運用してください。シート取得はルールを読むだけで原稿は送りません。<br>
+        <b>課金なしで使う：</b>APIキーが無くても、「SHIRO校正」タブの AI示唆ブロックにある <b>①〜③ の橋渡し</b>（プロンプトをコピー → claude.ai / Claude Code に貼り付け → 回答を貼り戻す）で、お使いのClaudeの校正結果を取り込めます（APIキー不要）。
       </div>
     </div>
   </div>
@@ -862,6 +877,20 @@ code {
           <span class="ai-desc">シート「SHIRO独自」「薬機法」のルールに基づく、表記揺れ・文脈依存の指摘</span>
           <span class="ai-status" id="ai-status"></span>
         </div>
+
+        <!-- 課金なしの橋渡し：お使いのClaude（claude.ai / Claude Code）に校正させて取り込む -->
+        <div class="ai-bridge" id="ai-bridge">
+          <div class="ai-bridge-bar">
+            <button class="btn btn-ghost" onclick="copyAIPrompt()"><span class="step">①</span> AI用プロンプトをコピー</button>
+            <span class="ai-bridge-hint">→ claude.ai か Claude Code に貼り付け、返ってきた内容を下へ貼って「反映」（APIキー不要・無料）</span>
+          </div>
+          <textarea id="ai-paste" placeholder="② Claude の回答（JSON）をここに貼り付け..."></textarea>
+          <div class="ai-bridge-bar">
+            <button class="btn btn-primary" onclick="applyAIPaste()"><span class="step">③</span> 結果を反映</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('ai-paste').value=''">クリア</button>
+          </div>
+        </div>
+
         <div id="ai-list"></div>
       </div>
     </div>
@@ -2378,23 +2407,85 @@ function loadRuleCache() {
 // ============================================================
 // v007: AI 示唆（Claude API・オプトイン）
 // ============================================================
+function getTargetText() {
+  return (document.getElementById('textA').value || document.getElementById('textB').value || '').replace(/\r\n?/g, '\n');
+}
+
 function maybeRunAI(target) {
   const c = getConfig();
   const block = document.getElementById('ai-block');
-  if (!c.apikey || c.aimode === 'off' || !target || !target.trim()) {
-    if (block) block.style.display = 'none';
-    return;
-  }
-  block.style.display = 'block';
   const list = document.getElementById('ai-list');
-  document.getElementById('ai-status').textContent = '';
-  list.innerHTML = '<div class="ai-loading"><span class="ai-spinner"></span>AI が文脈チェック中…（モデル: ' + h(c.model) + '）</div>';
-  runAI(target, c).then(findings => renderAI(findings))
-    .catch(err => {
-      list.innerHTML = '<div class="ai-err">AI 示唆を取得できませんでした：' + h(err.message || String(err)) +
-        '<br>（APIキー・モデル名・ネットワーク／CORS をご確認ください。機械判定の結果は上に表示済みです）</div>';
-      document.getElementById('ai-status').textContent = '';
-    });
+  const status = document.getElementById('ai-status');
+  if (!target || !target.trim()) { if (block) block.style.display = 'none'; return; }
+
+  // AIブロックは常に表示（橋渡しは APIキー不要・無料で使える）
+  block.style.display = 'block';
+  status.textContent = '';
+
+  if (c.apikey && c.aimode === 'auto') {
+    // API 自動実行
+    list.innerHTML = '<div class="ai-loading"><span class="ai-spinner"></span>AI が文脈チェック中…（モデル: ' + h(c.model) + '）</div>';
+    runAI(target, c).then(findings => renderAI(findings))
+      .catch(err => {
+        list.innerHTML = '<div class="ai-err">API 経由のAI示唆を取得できませんでした：' + h(err.message || String(err)) +
+          '<br>（キー/モデル/通信をご確認ください。または下の「①〜③」橋渡しで、お使いのClaudeから無料で取り込めます）</div>';
+      });
+  } else {
+    // APIキー無し：橋渡し案内（課金ゼロ）
+    list.innerHTML = '<div class="ai-hint">APIキー未設定です。上の <b>①</b> でプロンプトをコピーし、<b>claude.ai / このClaude Code</b> に貼り付け、返答を <b>②</b> に貼って <b>③ 反映</b> を押すと、<b>課金なし</b>でこのClaudeの校正結果を取り込めます。</div>';
+  }
+}
+
+// ── 橋渡し（コピペ）：プロンプト生成・コピー・結果反映 ──
+function buildBridgePrompt(target) {
+  return buildAIPrompt(target) + `
+
+# 出力形式（厳守）
+- 下記スキーマの JSON だけを出力してください（前後の説明文・コードフェンス \`\`\` は付けない）。
+- 指摘が無ければ {"findings":[]} とだけ出力。
+
+{"findings":[{"line":整数(1始まりの行番号),"text":"検出した文字列","severity":"ng または warn","rule":"根拠ルール（例: 薬機法/治療表現、SHIRO独自/ブランド）","suggestion":"修正提案(OK表現)","reason":"理由の簡潔な説明"}]}`;
+}
+
+function copyAIPrompt() {
+  const target = getTargetText().trim();
+  if (!target) { showToast('先にチェック対象テキストを入力してください'); return; }
+  const text = buildBridgePrompt(target);
+  const done = () => showToast('AI用プロンプトをコピーしました。claude.ai / Claude Code に貼り付けてください');
+  navigator.clipboard.writeText(text).then(done, () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { showToast('コピーに失敗しました'); }
+    document.body.removeChild(ta);
+  });
+}
+
+// 貼り付けテキストから JSON を頑健に抽出
+function extractFindings(raw) {
+  if (!raw || !raw.trim()) return null;
+  let t = raw.trim();
+  // コードフェンス除去
+  t = t.replace(/^```[a-zA-Z]*\s*/m, '').replace(/```\s*$/m, '').trim();
+  const tries = [t];
+  const obj = t.match(/\{[\s\S]*\}/); if (obj) tries.push(obj[0]);
+  const arr = t.match(/\[[\s\S]*\]/); if (arr) tries.push(arr[0]);
+  for (const cand of tries) {
+    try {
+      const p = JSON.parse(cand);
+      if (Array.isArray(p)) return p;
+      if (p && Array.isArray(p.findings)) return p.findings;
+    } catch (e) {}
+  }
+  return null;
+}
+
+function applyAIPaste() {
+  const raw = document.getElementById('ai-paste').value;
+  const findings = extractFindings(raw);
+  if (findings === null) { showToast('JSON を読み取れませんでした。回答全体を貼り付けてください'); return; }
+  document.getElementById('ai-block').style.display = 'block';
+  renderAI(findings);
+  showToast(`AIの校正結果を反映しました（${findings.length}件）`);
 }
 
 function buildAIPrompt(target) {

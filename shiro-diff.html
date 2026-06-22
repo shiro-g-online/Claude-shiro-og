@@ -1,0 +1,2533 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHIRO Diff — テキスト比較・校正ツール</title>
+<style>
+:root {
+  --bg: #f4f4f2;
+  --surface: #ffffff;
+  --surface2: #f0f0ee;
+  --border: #e2e2dd;
+  --text: #393c41;
+  --muted: #8a8d92;
+  --accent: #000030;       /* 強調・見出し */
+  --del-bg: #fbeceb;
+  --del-hl: #f3c0bc;
+  --del-text: #b32d22;
+  --ins-bg: #e9f5ec;
+  --ins-hl: #b3e0c1;
+  --ins-text: #1e7a3e;
+  --warn-bg: #fcf4dd;
+  --warn-text: #9a6d00;
+  --ng-bg: #fbe9e7;
+  --ng-text: #b32d22;
+  --ok-text: #1e7a3e;
+
+  /* ---- Typography scale ---- */
+  --fs-note: 12px;   /* 注記など   */
+  --fs-base: 14px;   /* 基本       */
+  --fs-em:   16px;   /* 強調       */
+  --fs-head: 20px;   /* 見出しなど */
+  --fw-normal: 400;
+  --fw-medium: 500;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Hiragino Kaku Gothic Pro', 'Yu Gothic UI', Meiryo, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-normal);
+  line-height: 1.6;
+}
+
+/* ---- HEADER ---- */
+header {
+  background: var(--accent);
+  border-bottom: 1px solid var(--accent);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+header .logo { font-size: var(--fs-head); font-weight: var(--fw-medium); color: #ffffff; letter-spacing: .14em; }
+header .sub  { font-size: var(--fs-note); color: rgba(255,255,255,.6); }
+header .ver  {
+  margin-left: auto;
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  color: rgba(255,255,255,.85);
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 4px;
+  padding: 2px 9px;
+  letter-spacing: .08em;
+}
+
+/* ---- LAYOUT ---- */
+.container { padding: 16px 20px; max-width: 1440px; margin: 0 auto; }
+
+/* ---- INPUT AREA ---- */
+.input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.input-panel label {
+  display: block;
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+textarea {
+  width: 100%;
+  height: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-family: 'Courier New', 'MS Gothic', monospace;
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  resize: vertical;
+  outline: none;
+  transition: border-color .15s;
+}
+textarea:focus { border-color: var(--accent); }
+
+/* ---- ACTIONS ---- */
+.actions { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+.btn {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  transition: opacity .15s, transform .1s;
+  letter-spacing: .02em;
+}
+.btn:hover { opacity: .85; }
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-ghost   { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.btn-dl      { background: var(--surface); border: 1px solid var(--accent); color: var(--accent); }
+
+.char-counter {
+  margin-left: auto;
+  font-size: var(--fs-note);
+  color: var(--muted);
+  display: flex;
+  gap: 14px;
+}
+.char-counter span b { color: var(--text); font-weight: var(--fw-medium); }
+
+/* ---- TABS ---- */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  gap: 2px;
+}
+.tab {
+  padding: 7px 15px;
+  cursor: pointer;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-normal);
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+  user-select: none;
+  border-radius: 4px 4px 0 0;
+}
+.tab:hover { color: var(--text); background: var(--surface); }
+.tab.active { color: var(--accent); font-weight: var(--fw-medium); border-bottom-color: var(--accent); }
+.tab .badge {
+  display: inline-block;
+  background: var(--del-text);
+  color: #fff;
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  border-radius: 8px;
+  padding: 0 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.tab .badge.warn { background: var(--warn-text); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ---- EMPTY STATE ---- */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.empty-state .icon { font-size: var(--fs-head); margin-bottom: 10px; display: block; }
+.empty-state p { font-size: var(--fs-base); }
+
+/* ---- DIFF VIEW ---- */
+.diff-stats {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 10px;
+  font-size: var(--fs-note);
+  align-items: center;
+}
+.diff-stats .s-label { color: var(--muted); }
+.diff-stats .s-val   { font-weight: var(--fw-medium); margin-left: 3px; }
+.diff-stats .s-del   { color: var(--del-text); }
+.diff-stats .s-ins   { color: var(--ins-text); }
+.diff-stats .s-eq    { color: var(--text); }
+
+.diff-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: 'Courier New', 'MS Gothic', monospace;
+  font-size: var(--fs-base);
+  line-height: 1.6;
+}
+.diff-col { background: var(--surface); overflow-x: auto; }
+.diff-col-header {
+  background: var(--bg);
+  padding: 5px 10px;
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  border-bottom: 1px solid var(--border);
+  font-family: inherit;
+}
+.diff-line { display: flex; min-height: 21px; }
+.diff-ln {
+  min-width: 36px;
+  padding: 0 6px;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--fs-note);
+  border-right: 1px solid var(--border);
+  user-select: none;
+  flex-shrink: 0;
+  line-height: 21px;
+}
+.diff-lc {
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+}
+.diff-line.d-del { background: var(--del-bg); }
+.diff-line.d-ins { background: var(--ins-bg); }
+.diff-line.d-del .diff-ln { color: var(--del-text); }
+.diff-line.d-ins .diff-ln { color: var(--ins-text); }
+.diff-line.d-empty { opacity: .3; }
+.c-del { background: var(--del-hl); border-radius: 2px; }
+.c-ins { background: var(--ins-hl); border-radius: 2px; }
+
+/* ---- DIFF STATS FOOTER (difff.jp style) ---- */
+.diff-stats-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 11px 16px;
+}
+.stat-card h4 {
+  font-size: var(--fs-note);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-weight: var(--fw-medium);
+}
+.stat-card .sline { font-size: var(--fs-note); color: var(--muted); margin-bottom: 4px; }
+.stat-card .sline:last-child { margin-bottom: 0; }
+.stat-card .sline b { color: var(--text); font-weight: var(--fw-medium); font-size: var(--fs-base); margin: 0 2px; }
+.stat-card .sline .sep { display: inline-block; width: 14px; }
+.stat-card .delta { font-size: var(--fs-note); font-weight: var(--fw-medium); margin-left: 5px; }
+.stat-card .delta.up   { color: var(--ins-text); }
+.stat-card .delta.down { color: var(--del-text); }
+
+/* ---- SEO ---- */
+.seo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.seo-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.seo-card.wide { grid-column: span 2; }
+.seo-card-title { font-size: var(--fs-note); font-weight: var(--fw-medium); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.seo-val { font-size: var(--fs-head); font-weight: var(--fw-medium); line-height: 1.1; }
+.seo-val.ok   { color: var(--ok-text); }
+.seo-val.warn { color: var(--warn-text); }
+.seo-val.ng   { color: var(--ng-text); }
+.seo-unit { font-size: var(--fs-note); font-weight: var(--fw-normal); color: var(--muted); margin-left: 2px; }
+.seo-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.seo-bar-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+.seo-bar-fill.ok   { background: var(--ok-text); }
+.seo-bar-fill.warn { background: var(--warn-text); }
+.seo-bar-fill.ng   { background: var(--ng-text); }
+.kw-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.kw-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 3px 9px;
+  border-radius: 3px;
+  font-size: var(--fs-note);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.kw-chip b { color: var(--accent); font-weight: var(--fw-medium); }
+
+.issue-section-title {
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  margin-top: 4px;
+}
+.issue-list { display: flex; flex-direction: column; gap: 4px; }
+.issue-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: var(--fs-base);
+}
+.issue-row.ng   { background: var(--ng-bg);   color: var(--ng-text); }
+.issue-row.warn { background: var(--warn-bg); color: var(--warn-text); }
+.issue-row.ok   { background: var(--ins-bg);  color: var(--ok-text); }
+.issue-tag {
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ng   .issue-tag { background: var(--ng-text);   color: #fff; }
+.warn .issue-tag { background: var(--warn-text); color: #fff; }
+.ok   .issue-tag { background: var(--ok-text);   color: #fff; }
+
+.no-issues {
+  text-align: center;
+  padding: 32px;
+  color: var(--ok-text);
+  font-size: var(--fs-base);
+}
+
+/* ---- SHIRO REGULATION ---- */
+.reg-summary { font-size: var(--fs-base); color: var(--muted); margin-bottom: 10px; }
+.reg-summary .ng-c   { color: var(--ng-text);   font-weight: var(--fw-medium); }
+.reg-summary .warn-c { color: var(--warn-text); font-weight: var(--fw-medium); }
+
+.reg-list { display: flex; flex-direction: column; gap: 5px; }
+.reg-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 12px;
+  border-radius: 5px;
+  font-size: var(--fs-base);
+}
+.reg-row.ng   { background: var(--ng-bg);   border-left: 3px solid var(--ng-text); }
+.reg-row.warn { background: var(--warn-bg); border-left: 3px solid var(--warn-text); }
+.reg-row .rln { color: var(--muted); font-size: var(--fs-note); white-space: nowrap; padding-top: 2px; }
+.reg-row .rmsg strong { display: block; font-size: var(--fs-base); font-weight: var(--fw-medium); margin-bottom: 3px; }
+.reg-row .rmsg strong.ng   { color: var(--ng-text); }
+.reg-row .rmsg strong.warn { color: var(--warn-text); }
+.reg-row .rmatch {
+  display: inline-block;
+  background: var(--border);
+  padding: 0 5px;
+  border-radius: 2px;
+  font-family: 'Courier New', monospace;
+  font-size: var(--fs-note);
+  color: var(--text);
+}
+.reg-row .rfix { color: var(--ok-text); font-size: var(--fs-note); white-space: nowrap; padding-top: 2px; text-align: right; }
+
+code {
+  font-family: 'Courier New', monospace;
+  background: var(--border);
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: var(--fs-note);
+}
+
+/* ---- META INPUT (折りたたみ) ---- */
+.meta-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.meta-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--fs-note);
+  font-weight: var(--fw-medium);
+  letter-spacing: .06em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.meta-toggle:hover { color: var(--text); }
+.meta-toggle .chev { transition: transform .15s; font-size: 11px; }
+.meta-box.open .meta-toggle .chev { transform: rotate(90deg); }
+.meta-toggle .hint { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: var(--fw-normal); }
+.meta-body { display: none; padding: 4px 14px 14px; }
+.meta-box.open .meta-body { display: block; }
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 12px;
+}
+.meta-field { display: flex; flex-direction: column; gap: 3px; }
+.meta-field.span2 { grid-column: span 2; }
+.meta-field label {
+  font-size: var(--fs-note);
+  color: var(--muted);
+  font-weight: var(--fw-medium);
+}
+.meta-field input, .meta-field select {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 9px;
+  font-size: var(--fs-base);
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+}
+.meta-field input:focus, .meta-field select:focus { border-color: var(--accent); }
+.meta-field .ml { font-size: var(--fs-note); color: var(--muted); }
+
+/* ---- SUB SECTION (SEO / E-E-A-T) ---- */
+.sub-block { margin-bottom: 22px; }
+.sub-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.sub-head h3 {
+  font-size: var(--fs-em);
+  font-weight: var(--fw-medium);
+  color: var(--accent);
+  letter-spacing: .02em;
+}
+.sub-head .sub-desc { font-size: var(--fs-note); color: var(--muted); }
+
+/* E-E-A-T シグナルメーター */
+.eeat-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.eeat-score-num { font-size: var(--fs-head); font-weight: var(--fw-medium); line-height: 1; }
+.eeat-score-num.ok { color: var(--ok-text); }
+.eeat-score-num.warn { color: var(--warn-text); }
+.eeat-score-num.ng { color: var(--ng-text); }
+.eeat-score-num small { font-size: var(--fs-note); color: var(--muted); font-weight: var(--fw-normal); }
+.eeat-axes { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+.eeat-axis {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 92px;
+  flex: 1;
+}
+.eeat-axis .ax-label { font-size: var(--fs-note); color: var(--muted); font-weight: var(--fw-medium); }
+.eeat-axis .ax-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.eeat-axis .ax-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+.eeat-axis .ax-fill.ok   { background: var(--ok-text); }
+.eeat-axis .ax-fill.warn { background: var(--warn-text); }
+.eeat-axis .ax-fill.ng   { background: var(--ng-text); }
+.eeat-axis .ax-val { font-size: var(--fs-note); color: var(--text); }
+
+.signal-list { display: flex; flex-direction: column; gap: 4px; }
+.signal-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: var(--fs-base);
+}
+.signal-row.found  { background: var(--ins-bg);  color: var(--ok-text); }
+.signal-row.miss   { background: var(--warn-bg); color: var(--warn-text); }
+.signal-row.ngs    { background: var(--ng-bg);   color: var(--ng-text); }
+.signal-row .sig-ic { flex-shrink: 0; margin-top: 1px; font-weight: var(--fw-medium); }
+.signal-row .sig-txt b { font-weight: var(--fw-medium); }
+.signal-row .sig-meta { color: var(--muted); font-size: var(--fs-note); display: block; margin-top: 2px; }
+
+/* ---- STRUCTURED DATA (JSON-LD) ---- */
+.sd-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.sd-type-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sd-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: var(--fs-note);
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface);
+  color: var(--muted);
+  transition: all .12s;
+}
+.sd-chip:hover { border-color: var(--accent); color: var(--text); }
+.sd-chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sd-actions { margin-left: auto; display: flex; gap: 8px; }
+.sd-output-wrap { position: relative; }
+.sd-output {
+  width: 100%;
+  background: #1b1b2e;
+  color: #e6e6ef;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-family: 'Courier New','MS Gothic',monospace;
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  min-height: 120px;
+  max-height: 520px;
+  overflow-y: auto;
+  tab-size: 2;
+}
+.sd-output .k { color: #9ecbff; }
+.sd-output .s { color: #c3e88d; }
+.sd-output .n { color: #f78c6c; }
+.sd-output .todo { color: #ffcb6b; font-style: italic; }
+.sd-todo-note {
+  font-size: var(--fs-note);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border-radius: 4px;
+  padding: 8px 11px;
+  margin-bottom: 10px;
+}
+.sd-empty-hint { font-size: var(--fs-base); color: var(--muted); padding: 24px 0; text-align: center; }
+.copy-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--accent);
+  color: #fff;
+  padding: 9px 20px;
+  border-radius: 20px;
+  font-size: var(--fs-base);
+  opacity: 0;
+  pointer-events: none;
+  transition: all .25s;
+  z-index: 200;
+}
+.copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---- SETTINGS BOX (AI / ルール) ---- */
+.set-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px 12px; }
+.set-field { display: flex; flex-direction: column; gap: 3px; }
+.set-field.span2 { grid-column: span 2; }
+.set-field label { font-size: var(--fs-note); color: var(--muted); font-weight: var(--fw-medium); }
+.set-field input, .set-field select {
+  border: 1px solid var(--border); border-radius: 4px; padding: 6px 9px;
+  font-size: var(--fs-base); font-family: inherit; color: var(--text);
+  background: var(--surface); outline: none;
+}
+.set-field input:focus, .set-field select:focus { border-color: var(--accent); }
+.set-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.set-check { display: flex; align-items: center; gap: 6px; font-size: var(--fs-note); color: var(--muted); }
+.set-note {
+  font-size: var(--fs-note); color: var(--warn-text); background: var(--warn-bg);
+  border-radius: 4px; padding: 8px 11px; margin-top: 8px; line-height: 1.5;
+}
+.src-pill {
+  display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-note);
+  font-weight: var(--fw-medium); padding: 2px 9px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+}
+.src-pill.sheet { color: var(--ok-text); border-color: var(--ins-hl); background: var(--ins-bg); }
+.src-pill.cache { color: var(--warn-text); border-color: var(--warn-bg); background: var(--warn-bg); }
+.src-pill.embedded { color: var(--muted); }
+.src-pill.loading { color: var(--accent); }
+
+/* ---- AI 示唆ブロック ---- */
+.ai-head { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.ai-head h3 { font-size: var(--fs-em); font-weight: var(--fw-medium); color: var(--accent); letter-spacing: .02em; }
+.ai-head .ai-chip { font-size: var(--fs-note); font-weight: var(--fw-medium); padding: 1px 7px; border-radius: 3px; background: var(--accent); color: #fff; letter-spacing: .04em; }
+.ai-head .ai-desc { font-size: var(--fs-note); color: var(--muted); }
+.ai-status { font-size: var(--fs-note); color: var(--muted); margin-left: auto; }
+.ai-loading { display: flex; align-items: center; gap: 8px; padding: 18px; color: var(--accent); font-size: var(--fs-base); }
+.ai-spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.reg-row .rconf { font-size: var(--fs-note); color: var(--muted); white-space: nowrap; }
+.reg-row .rai-badge { display: inline-block; font-size: 10px; font-weight: var(--fw-medium); background: var(--accent); color: #fff; border-radius: 2px; padding: 0 4px; margin-left: 5px; vertical-align: middle; }
+.reg-row .rreason { display: block; font-size: var(--fs-note); color: var(--muted); margin-top: 3px; }
+.ai-err { background: var(--ng-bg); color: var(--ng-text); border-radius: 4px; padding: 9px 12px; font-size: var(--fs-note); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SHIRO Diff</div>
+  <div class="sub">テキスト比較 &amp; SEO &amp; 校正ツール</div>
+  <div class="ver">v007</div>
+</header>
+
+<div class="container">
+
+  <!-- INPUT -->
+  <div class="input-row">
+    <div class="input-panel">
+      <label>チェック対象テキスト</label>
+      <textarea id="textA" placeholder="チェック対象のテキストを貼り付けてください..." oninput="updateCounters()"></textarea>
+    </div>
+    <div class="input-panel">
+      <label>比較用テキスト</label>
+      <textarea id="textB" placeholder="比較用のテキストを貼り付けてください..." oninput="updateCounters()"></textarea>
+    </div>
+  </div>
+
+  <!-- META INFO -->
+  <div class="meta-box" id="metaBox">
+    <div class="meta-toggle" onclick="document.getElementById('metaBox').classList.toggle('open')">
+      <span class="chev">▶</span>
+      <span>メタ情報・構造化データ用入力</span>
+      <span class="hint">任意 — タイトル/著者/価格などを入れると診断と JSON-LD 生成が強化されます</span>
+    </div>
+    <div class="meta-body">
+      <div class="meta-grid">
+        <div class="meta-field span2">
+          <label>ページタイトル（title タグ）</label>
+          <input id="m-title" type="text" placeholder="例：オイルインセラム｜SHIRO" oninput="updateTitleLen()">
+          <span class="ml" id="m-title-len"></span>
+        </div>
+        <div class="meta-field span2">
+          <label>メタディスクリプション</label>
+          <input id="m-desc" type="text" placeholder="検索結果に表示される説明文" oninput="updateDescLen()">
+          <span class="ml" id="m-desc-len"></span>
+        </div>
+        <div class="meta-field">
+          <label>主要キーワード（カンマ区切り）</label>
+          <input id="m-kw" type="text" placeholder="オイルインセラム, 美容液">
+        </div>
+        <div class="meta-field">
+          <label>正規 URL（canonical）</label>
+          <input id="m-url" type="text" placeholder="https://shiro-shiro.jp/...">
+        </div>
+        <div class="meta-field">
+          <label>コンテンツ種別（構造化データ）</label>
+          <select id="m-ctype">
+            <option value="Article">記事・コラム（Article）</option>
+            <option value="Product">製品ページ（Product）</option>
+            <option value="FAQPage">Q&A（FAQPage）</option>
+            <option value="BreadcrumbList">パンくず（BreadcrumbList）</option>
+          </select>
+        </div>
+        <div class="meta-field">
+          <label>著者・監修者</label>
+          <input id="m-author" type="text" placeholder="例：SHIRO 商品開発チーム">
+        </div>
+        <div class="meta-field">
+          <label>公開日</label>
+          <input id="m-pubdate" type="date">
+        </div>
+        <div class="meta-field">
+          <label>更新日</label>
+          <input id="m-moddate" type="date">
+        </div>
+        <div class="meta-field">
+          <label>価格（Product 時・税込円）</label>
+          <input id="m-price" type="text" placeholder="3960">
+        </div>
+        <div class="meta-field">
+          <label>在庫状況（Product 時）</label>
+          <select id="m-avail">
+            <option value="InStock">在庫あり</option>
+            <option value="OutOfStock">在庫なし</option>
+            <option value="PreOrder">予約受付</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI / ルール設定 -->
+  <div class="meta-box" id="setBox">
+    <div class="meta-toggle" onclick="document.getElementById('setBox').classList.toggle('open')">
+      <span class="chev">▶</span>
+      <span>AI示唆・校正ルール設定</span>
+      <span class="hint" id="set-hint">任意 — APIキー未設定なら完全ローカル動作（外部送信なし）</span>
+    </div>
+    <div class="meta-body">
+      <div class="set-grid">
+        <div class="set-field span2">
+          <label>Claude API キー（任意・入れると AI 示唆が有効化）</label>
+          <input id="s-apikey" type="password" placeholder="sk-ant-... （未入力なら従来どおり機械判定のみ・外部送信なし）" autocomplete="off">
+        </div>
+        <div class="set-field">
+          <label>AI モデル</label>
+          <select id="s-model">
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6（精度・標準）</option>
+            <option value="claude-opus-4-8">claude-opus-4-8（最高精度・低速高コスト）</option>
+            <option value="claude-haiku-4-5">claude-haiku-4-5（高速・低コスト）</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label>AI 示唆の実行</label>
+          <select id="s-aimode">
+            <option value="auto">自動（比較・分析と同時）</option>
+            <option value="off">無効（機械判定のみ）</option>
+          </select>
+        </div>
+        <div class="set-field span2">
+          <label>「SHIRO独自」シート CSV URL（ウェブに公開／出力CSV）</label>
+          <input id="s-url-shiro" type="text" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=<SHIRO独自のgid>&single=true&output=csv">
+        </div>
+        <div class="set-field span2">
+          <label>「薬機法」シート CSV URL（ウェブに公開／出力CSV）</label>
+          <input id="s-url-yakki" type="text" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=<薬機法のgid>&single=true&output=csv">
+        </div>
+      </div>
+      <div class="set-row">
+        <label class="set-check"><input type="checkbox" id="s-remember"> 設定をこの端末に保存（APIキー含む・共用PCでは非推奨）</label>
+        <button class="btn btn-ghost" onclick="fetchSheetRules(true)">シートから最新取得</button>
+        <span class="src-pill" id="rule-src">ルール: 読み込み中…</span>
+      </div>
+      <div class="set-note" id="ai-privacy-note">
+        <b>プライバシー：</b>既定は完全ローカル（外部送信なし）。APIキーを設定して AI 示唆を有効にした場合のみ、<b>チェック対象テキストとシート由来ルールが Anthropic API（api.anthropic.com）へ送信</b>されます。機密原稿はキーを空にして運用してください。シート取得はルールを読むだけで原稿は送りません。
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="runAll()">比較・分析</button>
+    <button class="btn btn-ghost" onclick="swapTexts()">⇄ 入れ替え</button>
+    <button class="btn btn-ghost" onclick="clearAll()">クリア</button>
+    <button class="btn btn-dl" onclick="downloadInstructions()">⤓ 指示書DL</button>
+    <div class="char-counter">
+      <span>チェック対象: <b id="cntA">0</b>字</span>
+      <span>比較用: <b id="cntB">0</b>字</span>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" id="tab-btn-diff" onclick="switchTab('diff')">差分比較</div>
+    <div class="tab" id="tab-btn-seo"  onclick="switchTab('seo')">SEO / E-E-A-T</div>
+    <div class="tab" id="tab-btn-shiro" onclick="switchTab('shiro')">SHIRO校正</div>
+    <div class="tab" id="tab-btn-sd" onclick="switchTab('sd')">構造化データ</div>
+  </div>
+
+  <!-- DIFF -->
+  <div id="tab-diff" class="tab-panel active">
+    <div class="empty-state" id="diff-empty">
+      <span class="icon">⇄</span>
+      <p>テキストを入力して「比較・分析」を押してください</p>
+    </div>
+    <div id="diff-result" style="display:none">
+      <div class="diff-stats" id="diff-stats"></div>
+      <div class="diff-view">
+        <div class="diff-col">
+          <div class="diff-col-header">チェック対象テキスト</div>
+          <div id="diff-left"></div>
+        </div>
+        <div class="diff-col">
+          <div class="diff-col-header">比較用テキスト</div>
+          <div id="diff-right"></div>
+        </div>
+      </div>
+      <div class="diff-stats-footer" id="diff-stats-footer"></div>
+    </div>
+  </div>
+
+  <!-- SEO -->
+  <div id="tab-seo" class="tab-panel">
+    <div class="empty-state" id="seo-empty">
+      <span class="icon">📊</span>
+      <p>テキストを入力して「比較・分析」を押してください</p>
+    </div>
+    <div id="seo-result" style="display:none">
+
+      <!-- 基本SEO -->
+      <div class="sub-block">
+        <div class="sub-head">
+          <h3>基本 SEO 指標</h3>
+          <span class="sub-desc">文字数・可読性・キーワード分布</span>
+        </div>
+        <div class="seo-grid" id="seo-cards"></div>
+      </div>
+
+      <!-- メタ・構造 -->
+      <div class="sub-block">
+        <div class="sub-head">
+          <h3>メタ情報・検索結果表示</h3>
+          <span class="sub-desc">title / description / 見出し構造</span>
+        </div>
+        <div class="issue-list" id="seo-meta-issues"></div>
+      </div>
+
+      <!-- E-E-A-T -->
+      <div class="sub-block">
+        <div class="sub-head">
+          <h3>E-E-A-T シグナル</h3>
+          <span class="sub-desc">テキスト内で担保できる経験・専門性・権威・信頼の手がかり</span>
+        </div>
+        <div class="eeat-summary" id="eeat-summary"></div>
+        <div class="signal-list" id="eeat-signals"></div>
+      </div>
+
+      <!-- 指摘 -->
+      <div class="sub-block">
+        <div class="sub-head">
+          <h3>指摘事項</h3>
+          <span class="sub-desc">可読性・SEO 上の改善ポイント</span>
+        </div>
+        <div class="issue-list" id="seo-issues"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SHIRO -->
+  <div id="tab-shiro" class="tab-panel">
+    <div class="empty-state" id="shiro-empty">
+      <span class="icon">✍</span>
+      <p>テキストを入力して「比較・分析」を押してください</p>
+    </div>
+    <div id="shiro-result" style="display:none">
+      <div class="reg-summary" id="shiro-summary"></div>
+      <div class="reg-list" id="shiro-list"></div>
+
+      <!-- AI 示唆（シート由来ルールに基づく文脈チェック） -->
+      <div id="ai-block" style="display:none">
+        <div class="ai-head">
+          <span class="ai-chip">AI</span>
+          <h3>AI 示唆（文脈チェック）</h3>
+          <span class="ai-desc">シート「SHIRO独自」「薬機法」のルールに基づく、表記揺れ・文脈依存の指摘</span>
+          <span class="ai-status" id="ai-status"></span>
+        </div>
+        <div id="ai-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STRUCTURED DATA -->
+  <div id="tab-sd" class="tab-panel">
+    <div class="sd-todo-note">
+      生成される JSON-LD は <b>雛形（下書き）</b>です。<code>"TODO:..."</code> の箇所は実装前に必ず実値へ置換し、Google リッチリザルトテストで検証してください。テキスト・メタ入力から自動で埋められる項目のみ反映しています。
+    </div>
+    <div class="sd-controls">
+      <div class="sd-type-chips" id="sd-chips">
+        <span class="sd-chip on" data-t="Article" onclick="toggleSdType(this)">Article</span>
+        <span class="sd-chip" data-t="Product" onclick="toggleSdType(this)">Product</span>
+        <span class="sd-chip" data-t="FAQPage" onclick="toggleSdType(this)">FAQPage</span>
+        <span class="sd-chip" data-t="BreadcrumbList" onclick="toggleSdType(this)">BreadcrumbList</span>
+        <span class="sd-chip" data-t="Organization" onclick="toggleSdType(this)">Organization</span>
+      </div>
+      <div class="sd-actions">
+        <button class="btn btn-ghost" onclick="buildStructuredData()">再生成</button>
+        <button class="btn btn-primary" onclick="copySd()">コピー</button>
+      </div>
+    </div>
+    <div class="sd-output-wrap">
+      <div class="sd-output" id="sd-output"><div class="sd-empty-hint">種別を選び「再生成」を押すと JSON-LD 雛形が生成されます。<br>FAQPage はテキストの「Q.〜 / A.〜」行を自動抽出します。</div></div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ============================================================
+// UTILITIES
+// ============================================================
+function h(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function updateCounters() {
+  document.getElementById('cntA').textContent = document.getElementById('textA').value.length;
+  document.getElementById('cntB').textContent = document.getElementById('textB').value.length;
+}
+
+function clearAll() {
+  ['textA','textB'].forEach(id => document.getElementById(id).value = '');
+  updateCounters();
+  ['diff','seo','shiro'].forEach(showEmpty);
+  // タブ見出しを初期状態へ戻す（バッジ除去）
+  const labels = { diff:'差分比較', seo:'SEO / E-E-A-T', shiro:'SHIRO校正', sd:'構造化データ' };
+  Object.entries(labels).forEach(([k, v]) => {
+    const el = document.getElementById('tab-btn-' + k);
+    if (el) el.innerHTML = v;
+  });
+  // 構造化データ出力をリセット
+  const sd = document.getElementById('sd-output');
+  if (sd) {
+    sd.dataset.raw = '';
+    sd.innerHTML = '<div class="sd-empty-hint">種別を選び「再生成」を押すと JSON-LD 雛形が生成されます。<br>FAQPage はテキストの「Q.〜 / A.〜」行を自動抽出します。</div>';
+  }
+}
+
+function swapTexts() {
+  const a = document.getElementById('textA');
+  const b = document.getElementById('textB');
+  [a.value, b.value] = [b.value, a.value];
+  updateCounters();
+}
+
+function showEmpty(name) {
+  document.getElementById(name + '-empty').style.display  = '';
+  document.getElementById(name + '-result').style.display = 'none';
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name) {
+  ['diff','seo','shiro','sd'].forEach(n => {
+    document.getElementById('tab-btn-' + n).classList.toggle('active', n === name);
+    document.getElementById('tab-' + n).classList.toggle('active', n === name);
+  });
+}
+
+// ============================================================
+// RUN ALL
+// ============================================================
+function runAll() {
+  const a = document.getElementById('textA').value;
+  const b = document.getElementById('textB').value;
+  if (!a && !b) return;
+  // 校正・SEO・E-E-A-T・構造化データは「チェック対象テキスト(A)」を診断対象にする
+  const target = a || b;
+  runDiff(a, b);
+  runSEO(target);
+  runEEAT(target);
+  runMetaCheck(target);
+  runShiro(target);
+  buildStructuredData();
+  maybeRunAI(target);
+}
+
+// メタ文字数カウンタ
+function updateTitleLen() {
+  const v = document.getElementById('m-title').value;
+  const el = document.getElementById('m-title-len');
+  const n = v.length;
+  let st = n === 0 ? '' : (n <= 32 ? '適正（〜32字推奨）' : 'やや長い（32字超は省略の恐れ）');
+  el.textContent = n ? `${n}字　${st}` : '';
+  el.style.color = n > 32 ? 'var(--warn-text)' : 'var(--muted)';
+}
+function updateDescLen() {
+  const v = document.getElementById('m-desc').value;
+  const el = document.getElementById('m-desc-len');
+  const n = v.length;
+  let st = n === 0 ? '' : (n < 80 ? 'やや短い（80〜120字推奨）' : n <= 120 ? '適正' : '長い（120字超は省略の恐れ）');
+  el.textContent = n ? `${n}字　${st}` : '';
+  el.style.color = (n && (n < 80 || n > 120)) ? 'var(--warn-text)' : 'var(--muted)';
+}
+
+// ============================================================
+// DIFF
+// ============================================================
+// 行アライメント：完全一致=eq / 類似行=mod（変更ペア）/ それ以外=del・ins
+// 完全一致だけでなく「似た行」も対応付けるため、類似度を重みにした
+// 最適アライメント（重み付き編集距離）で割り当てる。これにより、
+// 片側に行が挿入されても本来ペアにすべき行がズレずに対応する。
+function lcsLines(A, B) {
+  const m = A.length, n = B.length;
+  if (m * n > 160000) return simpleLineDiff(A, B); // 大規模はフォールバック
+  const THRESH = 0.5; // この類似度以上を「変更行ペア(mod)」とみなす
+
+  // bigram を行ごとに事前計算（類似度計算の高速化）
+  const bgA = A.map(buildBigrams);
+  const bgB = B.map(buildBigrams);
+  const simCache = new Map();
+  const S = (i, j) => {
+    const key = i * n + j;
+    let v = simCache.get(key);
+    if (v === undefined) { v = lineSim(A[i], B[j], bgA[i], bgB[j]); simCache.set(key, v); }
+    return v;
+  };
+
+  const dp = [];
+  for (let i = 0; i <= m; i++) dp[i] = new Float64Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const s = S(i - 1, j - 1);
+      const diag = s >= THRESH ? dp[i-1][j-1] + s : -1;
+      dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1], diag);
+    }
+  }
+
+  const ops = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    const s = (i > 0 && j > 0) ? S(i - 1, j - 1) : -1;
+    if (i > 0 && j > 0 && s >= THRESH && dp[i][j] === dp[i-1][j-1] + s) {
+      ops.unshift(s === 1
+        ? { t: 'eq',  a: A[i-1], b: B[j-1] }
+        : { t: 'mod', a: A[i-1], b: B[j-1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+      ops.unshift({ t: 'ins', b: B[j-1] });
+      j--;
+    } else {
+      ops.unshift({ t: 'del', a: A[i-1] });
+      i--;
+    }
+  }
+  return ops;
+}
+
+// 行を bigram（2文字組）の出現数 Map に変換
+function buildBigrams(s) {
+  const m = new Map();
+  if (s.length === 1) { m.set(s, 1); return m; }
+  for (let k = 0; k < s.length - 1; k++) {
+    const g = s.substr(k, 2);
+    m.set(g, (m.get(g) || 0) + 1);
+  }
+  return m;
+}
+
+// 2行の類似度（0..1）— bigram の Dice 係数
+function lineSim(a, b, ba, bb) {
+  if (a === b) return 1;               // 空行同士もここで 1（eq）
+  if (a.length === 0 || b.length === 0) return 0;
+  if (a.length === 1 && b.length === 1) return 0; // 1文字同士で不一致
+  let inter = 0, total = 0;
+  ba.forEach((c, g) => { total += c; const o = bb.get(g); if (o) inter += Math.min(c, o); });
+  bb.forEach(c => total += c);
+  return total === 0 ? 0 : (2 * inter) / total;
+}
+
+function simpleLineDiff(A, B) {
+  const setA = new Set(A), setB = new Set(B);
+  const ops = [];
+  let ia = 0, ib = 0;
+  while (ia < A.length && ib < B.length) {
+    if (A[ia] === B[ib]) { ops.push({ t: 'eq', a: A[ia], b: B[ib] }); ia++; ib++; }
+    else { ops.push({ t: 'del', a: A[ia] }); ia++; }
+  }
+  while (ia < A.length) { ops.push({ t: 'del', a: A[ia++] }); }
+  while (ib < B.length) { ops.push({ t: 'ins', b: B[ib++] }); }
+  return ops;
+}
+
+function lcsChars(a, b) {
+  const ca = [...a], cb = [...b];
+  const m = ca.length, n = cb.length;
+  if (m * n > 40000) return null;
+  const dp = [];
+  for (let i = 0; i <= m; i++) { dp[i] = new Int32Array(n + 1); }
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = ca[i-1] === cb[j-1]
+        ? dp[i-1][j-1] + 1
+        : Math.max(dp[i-1][j], dp[i][j-1]);
+  const ops = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && ca[i-1] === cb[j-1]) {
+      ops.unshift({ t: 'eq', v: ca[i-1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+      ops.unshift({ t: 'ins', v: cb[j-1] });
+      j--;
+    } else {
+      ops.unshift({ t: 'del', v: ca[i-1] });
+      i--;
+    }
+  }
+  return ops;
+}
+
+function renderCharDiff(ops, side) {
+  if (!ops) return null;
+  return ops.map(op => {
+    const v = h(op.v);
+    if (op.t === 'eq') return v;
+    if (op.t === 'del' && side === 'a') return `<span class="c-del">${v}</span>`;
+    if (op.t === 'ins' && side === 'b') return `<span class="c-ins">${v}</span>`;
+    return '';
+  }).join('');
+}
+
+function emptyLine() {
+  return `<div class="diff-line d-empty"><span class="diff-ln"> </span><span class="diff-lc"> </span></div>`;
+}
+
+// ---- 文字カウント（difff.jp 準拠）----
+function textStats(text) {
+  const t = (text || '').replace(/\r\n?/g, '\n');
+  const total      = [...t].length;                              // 全文字（改行・空白含む）
+  const lineBreaks = (t.match(/\n/g) || []).length;             // 改行数
+  const spaces     = (t.match(/[ \t　\f\v]/g) || []).length; // 空白数（改行を除く）
+  const visible    = total - lineBreaks - spaces;               // 文字数（空白・改行除く）
+  const withSpace  = visible + spaces;                          // 空白込み文字数
+  const withBreak  = withSpace + lineBreaks;                    // 改行込み文字数
+  const words      = t.trim() ? t.trim().split(/\s+/).filter(Boolean).length : 0; // 単語数
+  return { visible, spaces, withSpace, lineBreaks, withBreak, words };
+}
+
+// 差分（B - A）を符号付きで表示
+function delta(b, a) {
+  const d = b - a;
+  if (d === 0) return '';
+  return `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${d}</span>`;
+}
+
+function statCard(title, s, ref) {
+  const d = ref ? {
+    visible:    delta(s.visible,    ref.visible),
+    spaces:     delta(s.spaces,     ref.spaces),
+    withSpace:  delta(s.withSpace,  ref.withSpace),
+    lineBreaks: delta(s.lineBreaks, ref.lineBreaks),
+    withBreak:  delta(s.withBreak,  ref.withBreak),
+    words:      delta(s.words,      ref.words),
+  } : { visible:'', spaces:'', withSpace:'', lineBreaks:'', withBreak:'', words:'' };
+  return `<div class="stat-card">
+    <h4>${title}</h4>
+    <div class="sline">文字数: <b>${s.visible}</b>${d.visible}</div>
+    <div class="sline">空白数: <b>${s.spaces}</b>${d.spaces}<span class="sep"></span>空白込み文字数: <b>${s.withSpace}</b>${d.withSpace}</div>
+    <div class="sline">改行数: <b>${s.lineBreaks}</b>${d.lineBreaks}<span class="sep"></span>改行込み文字数: <b>${s.withBreak}</b>${d.withBreak}</div>
+    <div class="sline">単語数: <b>${s.words}</b>${d.words}</div>
+  </div>`;
+}
+
+// 文字レベルの全文比較（difff.jp 方式）。改行も1文字として扱い、
+// 改行位置の違い・URL の有無など「行の再構成」に強い。
+// 入力が大きすぎる場合は null を返し、行ベース比較にフォールバックする。
+function charDiff(a, b) {
+  const A = [...a], B = [...b];
+  const m = A.length, n = B.length;
+  if (m * n > 4000000) return null; // 大規模はフォールバック
+  const dp = [];
+  for (let i = 0; i <= m; i++) dp[i] = new Int32Array(n + 1);
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = A[i-1] === B[j-1]
+        ? dp[i-1][j-1] + 1
+        : Math.max(dp[i-1][j], dp[i][j-1]);
+
+  const ops = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && A[i-1] === B[j-1]) { ops.push({ t:'eq',  v:A[i-1] }); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { ops.push({ t:'ins', v:B[j-1] }); j--; }
+    else { ops.push({ t:'del', v:A[i-1] }); i--; }
+  }
+  ops.reverse();
+  return ops;
+}
+
+// 文字 ops を片側（a=対象 / b=比較用）の行配列に変換。
+// その側に存在する文字（eq＋自分側の del/ins）だけを使い、改行で行を区切る。
+function buildCharLines(ops, side) {
+  const isLeft = side === 'a';
+  const hlCls  = isLeft ? 'c-del' : 'c-ins';
+  const lines = [];
+  let cur = '', changed = false;
+  ops.forEach(op => {
+    const mine = op.t === 'eq' || (isLeft ? op.t === 'del' : op.t === 'ins');
+    if (!mine) return;
+    if (op.v === '\n') { lines.push({ html: cur, changed }); cur = ''; changed = false; }
+    else if (op.t === 'eq') { cur += h(op.v); }
+    else { cur += `<span class="${hlCls}">${h(op.v)}</span>`; changed = true; }
+  });
+  lines.push({ html: cur, changed });
+  return lines;
+}
+
+function renderCharLines(elId, lines, side) {
+  const chgCls = side === 'a' ? 'd-del' : 'd-ins';
+  let n = 1;
+  document.getElementById(elId).innerHTML = lines.map(l =>
+    `<div class="diff-line ${l.changed ? chgCls : ''}"><span class="diff-ln">${n++}</span><span class="diff-lc">${l.html || ' '}</span></div>`
+  ).join('');
+}
+
+function runDiff(a, b) {
+  const ops = charDiff(a, b);
+  if (!ops) { runDiffLineBased(a, b); return; } // 大規模は行ベースへ
+
+  const leftLines  = buildCharLines(ops, 'a');
+  const rightLines = buildCharLines(ops, 'b');
+
+  let delC = 0, insC = 0;
+  ops.forEach(o => { if (o.v !== '\n') { if (o.t === 'del') delC++; else if (o.t === 'ins') insC++; } });
+  const chgL = leftLines.filter(l => l.changed).length;
+  const chgR = rightLines.filter(l => l.changed).length;
+
+  document.getElementById('diff-stats').innerHTML = `
+    <span class="s-label">削除</span><span class="s-val s-del">${delC}字</span>
+    <span class="s-label" style="margin-left:6px">追加</span><span class="s-val s-ins">${insC}字</span>
+    <span class="s-label" style="margin-left:6px">変更のある行</span><span class="s-val">対象 ${chgL} / 比較用 ${chgR}</span>
+  `;
+
+  renderCharLines('diff-left',  leftLines,  'a');
+  renderCharLines('diff-right', rightLines, 'b');
+
+  const sA = textStats(a), sB = textStats(b);
+  document.getElementById('diff-stats-footer').innerHTML =
+    statCard('チェック対象テキスト', sA, null) + statCard('比較用テキスト', sB, sA);
+
+  document.getElementById('diff-empty').style.display  = 'none';
+  document.getElementById('diff-result').style.display = 'block';
+
+  const changed = chgL + chgR;
+  document.getElementById('tab-btn-diff').innerHTML =
+    `差分比較${changed > 0 ? `<span class="badge warn">${changed}</span>` : ''}`;
+}
+
+function runDiffLineBased(a, b) {
+  const linesA = a.split('\n');
+  const linesB = b.split('\n');
+  const ops = lcsLines(linesA, linesB);
+
+  let dels = 0, ins = 0, eqs = 0;
+  ops.forEach(op => {
+    if (op.t === 'del') dels++;
+    else if (op.t === 'ins') ins++;
+    else if (op.t === 'eq') eqs++;
+    else { dels++; ins++; }
+  });
+
+  document.getElementById('diff-stats').innerHTML = `
+    <span class="s-label">変更なし</span><span class="s-val s-eq">${eqs}行</span>
+    <span class="s-label" style="margin-left:6px">削除</span><span class="s-val s-del">${dels}行</span>
+    <span class="s-label" style="margin-left:6px">追加</span><span class="s-val s-ins">${ins}行</span>
+  `;
+
+  const leftHtml = [], rightHtml = [];
+  let la = 1, lb = 1;
+
+  ops.forEach(op => {
+    if (op.t === 'eq') {
+      const c = h(op.a);
+      leftHtml.push(`<div class="diff-line"><span class="diff-ln">${la++}</span><span class="diff-lc">${c}</span></div>`);
+      rightHtml.push(`<div class="diff-line"><span class="diff-ln">${lb++}</span><span class="diff-lc">${c}</span></div>`);
+    } else if (op.t === 'del') {
+      leftHtml.push(`<div class="diff-line d-del"><span class="diff-ln">${la++}</span><span class="diff-lc">${h(op.a)}</span></div>`);
+      rightHtml.push(emptyLine());
+    } else if (op.t === 'ins') {
+      leftHtml.push(emptyLine());
+      rightHtml.push(`<div class="diff-line d-ins"><span class="diff-ln">${lb++}</span><span class="diff-lc">${h(op.b)}</span></div>`);
+    } else { // mod
+      const charOps = lcsChars(op.a, op.b);
+      const la_html = renderCharDiff(charOps, 'a') || h(op.a);
+      const lb_html = renderCharDiff(charOps, 'b') || h(op.b);
+      leftHtml.push(`<div class="diff-line d-del"><span class="diff-ln">${la++}</span><span class="diff-lc">${la_html}</span></div>`);
+      rightHtml.push(`<div class="diff-line d-ins"><span class="diff-ln">${lb++}</span><span class="diff-lc">${lb_html}</span></div>`);
+    }
+  });
+
+  document.getElementById('diff-left').innerHTML  = leftHtml.join('');
+  document.getElementById('diff-right').innerHTML = rightHtml.join('');
+
+  // 文字カウント（左右 + B-A 差分）
+  const sA = textStats(a), sB = textStats(b);
+  document.getElementById('diff-stats-footer').innerHTML =
+    statCard('チェック対象テキスト', sA, null) + statCard('比較用テキスト', sB, sA);
+
+  document.getElementById('diff-empty').style.display  = 'none';
+  document.getElementById('diff-result').style.display = 'block';
+
+  // Update tab badge
+  const changed = dels + ins;
+  const btn = document.getElementById('tab-btn-diff');
+  btn.innerHTML = `差分比較${changed > 0 ? `<span class="badge warn">${changed}</span>` : ''}`;
+}
+
+// ============================================================
+// SEO CHECK
+// ============================================================
+function runSEO(text) {
+  const issues = [];
+  const trimmed = text.trim();
+  if (!trimmed) { showEmpty('seo'); return; }
+
+  const totalChars = trimmed.length;
+  const noSpaceChars = trimmed.replace(/[\s　]/g, '').length;
+  const lines = trimmed.split('\n').filter(l => l.trim() !== '');
+
+  // 文分割（句点・感嘆・疑問・ピリオド）
+  const sentenceRaw = trimmed.split(/[。！？.!?]+/).map(s => s.trim()).filter(Boolean);
+  const sentCount = sentenceRaw.length;
+  const avgSentLen = sentCount > 0
+    ? Math.round(sentenceRaw.reduce((s, l) => s + l.length, 0) / sentCount)
+    : 0;
+  const longSents = sentenceRaw.filter(s => s.length > 80);
+
+  // 文字種
+  const hira  = (trimmed.match(/[ぁ-ゖ]/g)  || []).length;
+  const kata  = (trimmed.match(/[ァ-ヶ]/g)  || []).length;
+  const kanji = (trimmed.match(/[一-龯]/g)  || []).length;
+  const latin = (trimmed.match(/[a-zA-Z]/g)         || []).length;
+
+  const hiraRatio  = Math.round(hira  / totalChars * 100);
+  const kataRatio  = Math.round(kata  / totalChars * 100);
+  const kanjiRatio = Math.round(kanji / totalChars * 100);
+
+  // 文頭重複
+  const heads = lines.map(l => l.trim().slice(0, 4)).filter(s => s.length >= 2);
+  const headDupCount = heads.filter((s, i) => heads.indexOf(s) !== i).length;
+
+  // 重複文末
+  const tails = sentenceRaw.map(s => s.slice(-6));
+  const tailDupCount = tails.filter((s, i) => tails.indexOf(s) !== i).length;
+
+  // キーワード
+  const words = (trimmed.match(/[ぁ-龯一-龯\w]{2,}/g) || []);
+  const freq = {};
+  words.forEach(w => freq[w] = (freq[w] || 0) + 1);
+  const topWords = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, 5);
+
+  // スコア算出
+  let score = 100;
+
+  let charSt = 'ok';
+  if (noSpaceChars < 200)      { charSt = 'ng';   score -= 25; issues.push({ t:'ng',   m:`文字数が少なすぎます（${noSpaceChars}字）。Webコンテンツは600字以上を推奨` }); }
+  else if (noSpaceChars < 500) { charSt = 'warn'; score -= 10; issues.push({ t:'warn', m:`文字数がやや少なめです（${noSpaceChars}字）。600字以上を推奨` }); }
+
+  let sentSt = 'ok';
+  if (avgSentLen > 100)      { sentSt = 'ng';   score -= 15; issues.push({ t:'ng',   m:`平均文長が長すぎます（${avgSentLen}字/文）。50〜70字が読みやすい目安` }); }
+  else if (avgSentLen > 80)  { sentSt = 'warn'; score -= 5;  issues.push({ t:'warn', m:`平均文長がやや長めです（${avgSentLen}字/文）` }); }
+
+  if (longSents.length > 0) {
+    score -= Math.min(10, longSents.length * 3);
+    issues.push({ t:'warn', m:`80字超えの長文が${longSents.length}件あります。適度に文を分割してください` });
+  }
+
+  let hiraSt = 'ok';
+  if (hiraRatio < 20)      { hiraSt = 'warn'; score -= 5;  issues.push({ t:'warn', m:`ひらがな率が低い（${hiraRatio}%）。Webテキストは30〜40%が読みやすい目安` }); }
+  else if (hiraRatio > 65) { hiraSt = 'warn'; score -= 5;  issues.push({ t:'warn', m:`ひらがな率が高すぎる（${hiraRatio}%）。漢字と適度にバランスをとってください` }); }
+
+  if (kanjiRatio > 35) {
+    score -= 5;
+    issues.push({ t:'warn', m:`漢字率が高め（${kanjiRatio}%）。専門用語が多いと読者層が絞られます` });
+  }
+
+  if (headDupCount > 2) {
+    score -= 5;
+    issues.push({ t:'warn', m:`文頭の重複が${headDupCount}件。同じ書き出しが続くと単調になります` });
+  }
+
+  if (tailDupCount > 3) {
+    score -= 5;
+    issues.push({ t:'warn', m:`文末表現の重複が${tailDupCount}件。「〜です。〜です。」の連続を避けてください` });
+  }
+
+  if (lines.length === 0 || (trimmed.split('\n\n').length < 2 && noSpaceChars > 400)) {
+    score -= 5;
+    issues.push({ t:'warn', m:`段落分けが少なめです。200〜300字ごとに改行を入れると読みやすくなります` });
+  }
+
+  score = Math.max(0, score);
+  const scoreSt = score >= 80 ? 'ok' : score >= 60 ? 'warn' : 'ng';
+
+  // Render
+  const cards = [
+    { title:'SEOスコア',        val:score,        unit:'/ 100', st:scoreSt, bar:score },
+    { title:'総文字数',          val:totalChars,   unit:'字',    st:charSt,  bar:Math.min(100, totalChars/10) },
+    { title:'実文字数（空白除く）', val:noSpaceChars, unit:'字',   st:charSt,  bar:Math.min(100, noSpaceChars/8) },
+    { title:'段落数',            val:lines.length, unit:'行',    st:'ok',    bar:null },
+    { title:'文数',              val:sentCount,    unit:'文',    st:'ok',    bar:null },
+    { title:'平均文長',          val:avgSentLen,   unit:'字/文', st:sentSt,  bar:Math.min(100, avgSentLen) },
+    { title:'ひらがな率',         val:hiraRatio,    unit:'%',     st:hiraSt,  bar:hiraRatio },
+    { title:'漢字率',            val:kanjiRatio,   unit:'%',     st:kanjiRatio > 35 ? 'warn' : 'ok', bar:kanjiRatio },
+    { title:'カタカナ率',         val:kataRatio,    unit:'%',     st:'ok',    bar:kataRatio },
+  ];
+
+  let cardsHtml = cards.map(c => `
+    <div class="seo-card">
+      <div class="seo-card-title">${c.title}</div>
+      <div class="seo-val ${c.st}">${c.val}<span class="seo-unit">${c.unit}</span></div>
+      ${c.bar !== null ? `<div class="seo-bar"><div class="seo-bar-fill ${c.st}" style="width:${c.bar}%"></div></div>` : ''}
+    </div>
+  `).join('');
+
+  if (topWords.length) {
+    cardsHtml += `
+      <div class="seo-card wide">
+        <div class="seo-card-title">頻出キーワード Top 5</div>
+        <div class="kw-chips">
+          ${topWords.map(([w,c]) => `<span class="kw-chip">${h(w)} <b>${c}</b></span>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  document.getElementById('seo-cards').innerHTML = cardsHtml;
+
+  if (issues.length === 0) {
+    document.getElementById('seo-issues').innerHTML = '<div class="no-issues">✓ SEO上の問題は検出されませんでした</div>';
+  } else {
+    document.getElementById('seo-issues').innerHTML = issues.map(i => `
+      <div class="issue-row ${i.t}">
+        <span class="issue-tag">${i.t.toUpperCase()}</span>
+        <span>${h(i.m)}</span>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('seo-empty').style.display  = 'none';
+  document.getElementById('seo-result').style.display = 'block';
+
+  // Badge（タブ名は「SEO / E-E-A-T」を維持）
+  const ngCount = issues.filter(i => i.t === 'ng').length;
+  const seoBtn = document.getElementById('tab-btn-seo');
+  seoBtn.innerHTML = `SEO / E-E-A-T${ngCount > 0 ? `<span class="badge">${ngCount}</span>` : issues.length > 0 ? `<span class="badge warn">${issues.length}</span>` : ''}`;
+}
+
+// ============================================================
+// SHIRO REGULATION
+// ============================================================
+// SHIRO 校正レギュレーション（スプレッドシート準拠）
+// sev: 'ng'=必須修正（薬機法・ブランド・誤表記）／'warn'=表記統一（ひらく等、媒体により例外あり）
+// ▼ 内蔵（フォールバック）ルール。起動時にシート取得が成功すれば、シート由来の
+//    リテラルルールを上乗せした active な RULES を rebuildRules() で再構築する。
+const EMBEDDED_SHIRO_RULES = [
+  // ── 薬機法（汎用キャッチ：個別NG表現はスプレッドシート「薬機法」シート由来を後方で追加） ──
+  { re: /(治る|治す|治った|完治|治療|治癒)/g,
+    fix: '「健やかに保つ」等へ', label: '[薬機法] 疾病の治療・治癒の標ぼうはNG', sev: 'ng' },
+  { re: /(アトピー|湿疹|皮膚炎|花粉症|アレルギー|水虫|肌疾患)/g,
+    fix: '疾患名の使用を避ける', label: '[薬機法] 疾患名の標ぼうは化粧品では不可', sev: 'ng' },
+  { re: /リラックス(?!空間|タイム|した|して|できる|な時間|なひととき)/g,
+    fix: '「リラックス空間/タイム」等の二次表現へ', label: '[薬機法]「リラックス」単独は精神への関与でNG（空間・タイム等の二次使用はOK）', sev: 'ng' },
+  { re: /美白(?!の夢|市場|神話)/g,
+    fix: '「透明感」「うるおい」等へ', label: '[薬機法]「美白」は薬用品以外NG', sev: 'ng' },
+
+  // ── ブランド・固有名詞 ──
+  { re: /商品/g,           fix: '製品',           label: '「商品」は「製品」に（自社工場を持つため商品としない）', sev: 'ng' },
+  { re: /SHIRO製品/g,      fix: 'SHIROの製品',    label: '「SHIRO製品」ではなく「SHIROの製品」', sev: 'ng' },
+  { re: /shiro(?!ne)/g,    fix: 'SHIRO',          label: 'ブランド名は「SHIRO」（全大文字）', sev: 'ng' },
+  { re: /Shiro(?!ne)/g,    fix: 'SHIRO',          label: 'ブランド名は「SHIRO」（全大文字）', sev: 'ng' },
+  { re: /FAVORITE/g,       fix: 'FAVOURITE',      label: '英国式綴り「FAVOURITE」に統一', sev: 'warn' },
+  { re: /ミュゲ/g,         fix: 'スズラン',       label: '香り名は「スズラン」（ミュゲ＝仏語は使わない）', sev: 'ng' },
+  { re: /ヴァージン/g,     fix: 'バージン',       label: '「バージン」（ヴァージンはNG）', sev: 'warn' },
+
+  // ── 敬語・定型文 ──
+  { re: /日頃よりSHIROの?商品をご愛用/g,
+    fix: '日頃よりSHIROの製品をご愛用', label: '製品のお知らせ定型文（「製品」を使用）', sev: 'ng' },
+  { re: /日頃よりSHIROをご愛用/g,
+    fix: '日頃よりSHIROをご愛顧', label: '製品以外のお知らせは「ご愛顧」', sev: 'warn' },
+  { re: /ありがとうございました/g,
+    fix: 'ありがとうございます', label: '「ありがとうございます」に統一', sev: 'warn' },
+
+  // ── 単位・価格・時間 ──
+  { re: /(\d)\s*ml(?![a-zA-Z])/g,  fix: 'mL',           label: '容量単位は「mL」（M大文字・L大文字）', sev: 'ng' },
+  { re: /(\d)\s*ｍＬ/g,            fix: 'mL（半角）',    label: '単位は半角「mL」', sev: 'ng' },
+  { re: /(\d)\s*[ℓＬ]/g,          fix: 'L（半角）',     label: '容量単位は半角「L」（小文字l・カタカナ リットルはNG）', sev: 'ng' },
+  { re: /\d[\d,]+円\s*[\(（]税別[\)）]/g, fix: '〇〇円(税込)', label: '価格は税込・半角カッコ「3,201円(税込)」', sev: 'ng' },
+  { re: /\d[\d,]+円\s*（税込）/g,  fix: '〇〇円(税込)',  label: '価格のカッコは半角「(税込)」', sev: 'warn' },
+  { re: /¥\s*\d/g,                fix: '〇〇円',        label: '価格は「¥」でなく「円」で表記', sev: 'warn' },
+  { re: /\d{1,2}:\d{2}\s*[〜～]\s*\d{1,2}:\d{2}/g,
+    fix: '「 - 」半角ハイフン（前後半角アケ）', label: '営業時間の区切りは半角ハイフン「-」（〜～はNG）', sev: 'ng' },
+
+  // ── 括弧・記号 ──
+  { re: /【[^】]{1,40}】/g, fix: '""で対応', label: '強調に【】は使用しない（""で対応）', sev: 'warn' },
+  { re: /[Ａ-Ｚａ-ｚ]/g,   fix: '半角英字', label: '全角英字は半角に統一', sev: 'ng' },
+  { re: /[０-９]/g,         fix: '半角数字', label: '全角数字は半角に統一', sev: 'ng' },
+
+  // ── 最上級・優位性（根拠が必要） ──
+  { re: /日本初/g,         fix: '「日本発」へ', label: '「日本初」はNG（日本発のコスメティックブランド）', sev: 'ng' },
+  { re: /No\.?\s*1|ナンバーワン|ナンバー1/gi,
+    fix: '根拠・調査元を明記', label: '「No.1」等は調査概要・出典が必要', sev: 'ng' },
+  { re: /業界初|世界初/g,   fix: '根拠・出典を明記', label: '「〜初」表現は根拠・出典が必要', sev: 'warn' },
+  { re: /最高級/g,         fix: '根拠のある表現へ', label: '「最高級」は根拠・証跡が必要', sev: 'warn' },
+
+  // ── ひらく（漢字→ひらがな）／表記統一 ──
+  { re: /お薦め|オススメ|お勧め/g, fix: 'おすすめ',   label: '「おすすめ」はひらがなに', sev: 'warn' },
+  { re: /綺麗|キレイ/g,           fix: 'きれい',     label: '「きれい」はひらがなに', sev: 'warn' },
+  { re: /お洒落|オシャレ/g,       fix: 'おしゃれ',   label: '「おしゃれ」はひらがなに', sev: 'warn' },
+  { re: /様々/g,                 fix: 'さまざま',   label: '「さまざま」はひらがなに', sev: 'warn' },
+  { re: /更に/g,                 fix: 'さらに',     label: '「さらに」はひらがなに', sev: 'warn' },
+  { re: /是非/g,                 fix: 'ぜひ',       label: '「ぜひ」はひらがなに（形式張った文は例外）', sev: 'warn' },
+  { re: /全て/g,                 fix: 'すべて',     label: '「すべて」はひらがなに', sev: 'warn' },
+  { re: /為に/g,                 fix: 'ために',     label: '「ため」はひらがなに', sev: 'warn' },
+  { re: /纏う/g,                 fix: 'まとう',     label: '「まとう」はひらがなに', sev: 'warn' },
+  { re: /溢れる/g,               fix: 'あふれる',   label: '「あふれる」はひらがなに', sev: 'warn' },
+  { re: /労る/g,                 fix: 'いたわる',   label: '「いたわる」はひらがなに', sev: 'warn' },
+  { re: /優しい/g,               fix: 'やさしい',   label: '「やさしい」はひらがなに（感情表現は要検討）', sev: 'warn' },
+  { re: /艶/g,                   fix: 'つや',       label: '「つや」はひらがなに', sev: 'warn' },
+  { re: /皺/g,                   fix: 'しわ',       label: '「しわ」はひらがなに', sev: 'warn' },
+  { re: /穏やか/g,               fix: 'おだやか',   label: '「おだやか」はひらがなに', sev: 'warn' },
+  { re: /て頂(く|き|い|け|ま)/g,  fix: 'ていただく', label: '補助動詞「いただく」はひらがなに', sev: 'warn' },
+
+  // ── 送り仮名・漢字統一 ──
+  { re: /癒し/g,                 fix: '癒やし',     label: '送り仮名は「癒やし」', sev: 'warn' },
+  { re: /行なう/g,               fix: '行う',       label: '「行う」（「行なう」ではない）', sev: 'warn' },
+  { re: /洗たく/g,               fix: '洗濯',       label: '「洗濯」は漢字に', sev: 'warn' },
+  { re: /ふきとり/g,             fix: 'ふき取り',   label: '「ふき取り」に', sev: 'warn' },
+  { re: /アイディア/g,           fix: 'アイデア',   label: '「アイデア」（アイディアはNG）', sev: 'warn' },
+
+  // ── カタカナ表記統一 ──
+  { re: /ウッディー/g,           fix: 'ウッディ',   label: '語尾Yは音引きなし「ウッディ」', sev: 'warn' },
+  { re: /パヒューム/g,           fix: 'パフューム', label: '「パフューム」に', sev: 'warn' },
+  { re: /マネージャー/g,         fix: 'マネジャー', label: '「マネジャー」に', sev: 'warn' },
+  { re: /ルーティーン/g,         fix: 'ルーティン', label: '「ルーティン」に', sev: 'warn' },
+
+  // ── 文末・余韻記号 ──
+  { re: /です。\s*です。|ます。\s*ます。/g,
+    fix: '文末表現を変化させる', label: '文末の連続重複（〜です。〜です。）は避ける', sev: 'warn' },
+  { re: /〜(?![年月日時分秒代])/g,
+    fix: '…または句読点', label: '「〜」（波ダッシュ）は文中では使用しない', sev: 'warn' },
+];
+
+// ── 薬機法 NG表現リスト（内蔵フォールバック：スプレッドシート「薬機法」シート準拠：NG表現 / NG区分 / OK表現） ──
+const EMBEDDED_YAKKIHOU = [
+  ["24時間保証","効果保証","皮膚のうるおいを保つ"],
+  ["DNA修復","医薬品的表現","肌を整える"],
+  ["アンチエイジング","医薬品的表現","年齢に応じたお手入れ"],
+  ["コラーゲン生成","身体機能変化","肌にはりを与える"],
+  ["シミを消す","治療表現","日やけによるシミ、ソバカスを防ぐ"],
+  ["シミ改善","改善表現","肌を整える"],
+  ["シワを消す","治療表現","乾燥による小ジワを目立たなくする"],
+  ["シワ改善","医薬部外品表現","肌にはりを与える"],
+  ["ターンオーバー促進","身体機能変化","肌を整える"],
+  ["たるみ改善","改善表現","肌にはりを与える"],
+  ["デトックス","身体機能変化","肌を整える"],
+  ["ニキビを治す","治療表現","ニキビを防ぐ（洗浄による）"],
+  ["ニキビ改善","治療表現","ニキビを防ぐ（洗浄による）"],
+  ["バリア機能を修復","修復表現","皮膚を保護する"],
+  ["リフトアップ","身体機能変化","肌をひきしめる"],
+  ["育毛する","医薬品的表現","頭皮、毛髪をすこやかに保つ"],
+  ["永久に保湿","効果保証","皮膚のうるおいを保つ"],
+  ["炎症を抑える","医薬品的表現","肌荒れを防ぐ"],
+  ["幹細胞活性化","身体機能変化","肌を整える"],
+  ["血行促進","身体機能変化","肌をすこやかに保つ"],
+  ["口臭を治す","治療表現","口臭を防ぐ"],
+  ["抗ウイルス","医薬品的表現","清浄にする"],
+  ["抗菌作用","医薬品的表現","清浄にする"],
+  ["細胞レベルで浸透","過度表現","角質層まで浸透"],
+  ["細胞再生","再生表現","肌を整える"],
+  ["殺菌する","医薬品的表現","清浄にする"],
+  ["歯周病改善","疾患表現","口中を浄化する"],
+  ["若返る","医薬品的表現","肌にはりを与える"],
+  ["傷んだ髪を修復","修復表現","裂毛、切毛、枝毛を防ぐ"],
+  ["唇の荒れを治す","治療表現","口唇の荒れを防ぐ"],
+  ["真皮まで浸透","過度表現","角質層まで浸透"],
+  ["赤み改善","治療表現","肌を整える"],
+  ["即効で消える","効果保証","肌を整える"],
+  ["虫歯を治す","治療表現","ムシ歯を防ぐ"],
+  ["爪を再生する","再生表現","爪をすこやかに保つ"],
+  ["頭皮環境改善","改善表現","頭皮、毛髪をすこやかに保つ"],
+  ["毒素排出","身体機能変化","肌を整える"],
+  ["白髪改善","治療表現","毛髪につやを与える"],
+  ["薄毛改善","治療表現","毛髪にはり、こしを与える"],
+  ["肌再生","再生表現","肌を整える"],
+  ["肌質改善","身体機能変化","肌を整える"],
+  ["発毛する","医薬品的表現","頭皮、毛髪をすこやかに保つ"],
+  ["抜け毛を治す","治療表現","頭皮をすこやかに保つ"],
+  ["敏感肌を治す","治療表現","肌荒れを防ぐ"],
+  ["毛穴をなくす","効果保証","肌を整える"],
+  ["毛穴を消す","治療表現","肌のキメを整える"],
+];
+
+// ============================================================
+// 動的ルール状態（シート由来 ←→ 内蔵フォールバック）
+// ============================================================
+// active なルール群。runShiro() はこの RULES と YAKKIHOU を参照する。
+// 起動時に fetchSheetRules() が成功すればシート由来へ差し替え、
+// 失敗時は内蔵（EMBEDDED_*）のまま動作する。
+let SHIRO_RULES = EMBEDDED_SHIRO_RULES.slice(); // SHIRO独自（リテラル抽出分を含む）
+let YAKKIHOU    = EMBEDDED_YAKKIHOU.map(r => r.slice()); // [NG, 区分, OK]
+let RULES       = [];                          // runShiro が実際に走査する合成ルール
+// AI プロンプトに渡す「正本ルール」テキスト（シート取得時に更新）
+let RULE_TEXT_SHIRO = '';
+let RULE_TEXT_YAKKI = '';
+
+// 正規表現メタ文字をエスケープ
+function reEscape(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// 薬機法トリプル [NG,区分,OK] → 厳密一致ルール
+function yakkihouToRule([ng, cat, ok]) {
+  return {
+    re: new RegExp(reEscape(ng), 'g'),
+    fix: ok || '医薬品的表現を避ける',
+    label: `[薬機法/${cat || '医薬品的表現'}]「${ng}」は化粧品で使用不可`,
+    sev: 'ng',
+  };
+}
+
+// active な RULES を再構築（SHIRO独自 + 薬機法厳密一致）
+function rebuildRules() {
+  RULES = SHIRO_RULES.concat(YAKKIHOU.map(yakkihouToRule));
+}
+rebuildRules();
+
+function runShiro(text) {
+  if (!text.trim()) { showEmpty('shiro'); return; }
+
+  const lines = text.split('\n');
+  const findings = [];
+
+  lines.forEach((line, idx) => {
+    // URL の範囲を求め、URL 内のマッチは校正対象から除外（ドメイン名の誤検出防止）
+    const urlRanges = [];
+    let um; const urlRe = /https?:\/\/\S+/g;
+    while ((um = urlRe.exec(line)) !== null) urlRanges.push([um.index, um.index + um[0].length]);
+    const inUrl = pos => urlRanges.some(([s, e]) => pos >= s && pos < e);
+
+    // この行のマッチを位置付きで収集
+    const lineMatches = [];
+    RULES.forEach(rule => {
+      const re = new RegExp(rule.re.source, rule.re.flags.replace('g','') + 'g');
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        if (m[0] === '') { re.lastIndex++; continue; }
+        if (inUrl(m.index)) continue; // URL 内はスキップ
+        lineMatches.push({
+          start: m.index, end: m.index + m[0].length,
+          match: m[0], fix: rule.fix, label: rule.label, sev: rule.sev,
+        });
+      }
+    });
+
+    // 重なり除去：長いマッチを優先し、それに内包される短いマッチは捨てる
+    // （例:「ニキビを治す」と汎用「治す」の二重検出を防ぐ）
+    lineMatches.sort((a, b) => {
+      const len = (b.end - b.start) - (a.end - a.start);
+      if (len !== 0) return len;            // 長い順
+      if (a.sev !== b.sev) return a.sev === 'ng' ? -1 : 1; // 同長は NG 優先
+      return a.start - b.start;
+    });
+    const kept = [];
+    lineMatches.forEach(m => {
+      if (!kept.some(k => k.start <= m.start && k.end >= m.end)) kept.push(m);
+    });
+    kept.sort((a, b) => a.start - b.start);
+    kept.forEach(k => findings.push({
+      lineNum: idx + 1, match: k.match, fix: k.fix, label: k.label, sev: k.sev,
+    }));
+  });
+
+  const listEl = document.getElementById('shiro-list');
+  const sumEl  = document.getElementById('shiro-summary');
+
+  if (findings.length === 0) {
+    sumEl.innerHTML = '';
+    listEl.innerHTML = '<div class="no-issues">✓ SHIRO校正レギュレーション上の問題は検出されませんでした</div>';
+  } else {
+    findings.sort((a, b) =>
+      a.sev === b.sev ? a.lineNum - b.lineNum : a.sev === 'ng' ? -1 : 1
+    );
+    const ngN   = findings.filter(f => f.sev === 'ng').length;
+    const warnN = findings.filter(f => f.sev === 'warn').length;
+
+    sumEl.innerHTML = `
+      <span class="ng-c">NG: ${ngN}件</span>　<span class="warn-c">WARN: ${warnN}件</span>
+      （合計 ${findings.length}件）
+    `;
+
+    listEl.innerHTML = '<div class="reg-list">' + findings.map(f => `
+      <div class="reg-row ${f.sev}">
+        <span class="rln">${f.lineNum}行</span>
+        <span class="rmsg">
+          <strong class="${f.sev}">${h(f.label)}</strong>
+          検出: <span class="rmatch">${h(f.match)}</span>
+        </span>
+        <span class="rfix">→ ${h(f.fix)}</span>
+      </div>
+    `).join('') + '</div>';
+  }
+
+  document.getElementById('shiro-empty').style.display  = 'none';
+  document.getElementById('shiro-result').style.display = 'block';
+
+  // Badge
+  const ngN2 = findings.filter(f => f.sev === 'ng').length;
+  const shiroBtn = document.getElementById('tab-btn-shiro');
+  shiroBtn.innerHTML = `SHIRO校正${ngN2 > 0 ? `<span class="badge">${ngN2}</span>` : findings.length > 0 ? `<span class="badge warn">${findings.length}</span>` : ''}`;
+}
+
+// ============================================================
+// E-E-A-T シグナル検出
+// 注：テキスト内シグナルの検出であり、E-E-A-T の自動判定ではない。
+//     減点/加点理由を明示し「手がかりの可視化」にとどめる。
+// ============================================================
+function runEEAT(text) {
+  const t = text.trim();
+  if (!t) return;
+
+  const author = (document.getElementById('m-author').value || '').trim();
+  const pub    = (document.getElementById('m-pubdate').value || '').trim();
+  const mod    = (document.getElementById('m-moddate').value || '').trim();
+
+  // --- Experience（経験・実体験）---
+  const firstPerson = (t.match(/(私|わたし|筆者|スタッフ|編集部)(は|が|たち|も)/g) || []).length;
+  const usageDesc   = (t.match(/(使って|試して|塗って|つけて|体感|実際に|使用感|つけ心地|texture|テクスチャ)/g) || []).length;
+  const expHit = firstPerson + usageDesc;
+  const expScore = Math.min(100, expHit * 22);
+
+  // --- Expertise（専門性）---
+  const numbers = (t.match(/\d+(\.\d+)?\s*(%|％|mL|ml|g|時間|分|日|週|回|種|種類|配合)/g) || []).length;
+  const terms   = (t.match(/(成分|処方|配合|保湿|pH|エモリエント|オイル|エキス|抽出|分子|浸透|角質|バリア機能)/g) || []).length;
+  const expertHit = numbers * 2 + terms;
+  const expertScore = Math.min(100, expertHit * 9);
+
+  // --- Authoritativeness（権威・著者性）---
+  let authScore = 0;
+  const authSignals = [];
+  if (author) { authScore += 50; authSignals.push(true); } else authSignals.push(false);
+  const hasByline = /(監修|執筆|文：|著者|ライター|編集)/.test(t);
+  if (hasByline) authScore += 30;
+  const hasOrg = /(SHIRO|株式会社|ブランド)/.test(t);
+  if (hasOrg) authScore += 20;
+  authScore = Math.min(100, authScore);
+
+  // --- Trustworthiness（信頼・出典・更新）---
+  const urls   = (t.match(/https?:\/\/[^\s）)、。]+/g) || []).length;
+  const sources= (t.match(/(出典|参考|調査|による(と|調べ)|研究|資料|データ)/g) || []).length;
+  let trustScore = Math.min(60, (urls * 20) + (sources * 12));
+  if (pub) trustScore += 20;
+  if (mod) trustScore += 20;
+  trustScore = Math.min(100, trustScore);
+
+  const overall = Math.round((expScore + expertScore + authScore + trustScore) / 4);
+  const stOf = v => v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'ng';
+
+  const axes = [
+    { key:'Experience（経験）',   v:expScore },
+    { key:'Expertise（専門性）',  v:expertScore },
+    { key:'Authority（権威）',    v:authScore },
+    { key:'Trust（信頼）',        v:trustScore },
+  ];
+
+  document.getElementById('eeat-summary').innerHTML = `
+    <div>
+      <div class="eeat-score-num ${stOf(overall)}">${overall}<small> / 100</small></div>
+      <div style="font-size:var(--fs-note);color:var(--muted);margin-top:3px;">総合シグナル</div>
+    </div>
+    <div class="eeat-axes">
+      ${axes.map(ax => `
+        <div class="eeat-axis">
+          <span class="ax-label">${ax.key}</span>
+          <div class="ax-bar"><div class="ax-fill ${stOf(ax.v)}" style="width:${ax.v}%"></div></div>
+          <span class="ax-val">${ax.v}</span>
+        </div>`).join('')}
+    </div>`;
+
+  // シグナル詳細
+  const sig = [];
+  const push = (state, label, meta) => sig.push({ state, label, meta });
+
+  expHit > 0
+    ? push('found', `体験・使用描写を ${expHit} 箇所検出`, '一人称・使用感の記述は Experience の手がかりになります')
+    : push('miss',  '体験・使用描写が見当たりません', '「実際に使って」「使用感は」など一次体験の記述を加えると有効です');
+
+  expertHit > 3
+    ? push('found', `専門的記述（数値・成分用語）を検出`, `数値 ${numbers} 件 / 専門語 ${terms} 件`)
+    : push('miss',  '専門的な数値・成分記述が少なめです', '配合量・成分名・具体的な数値が専門性を裏づけます');
+
+  author
+    ? push('found', `著者・監修者「${h(author)}」が指定されています`, 'JSON-LD の author にも反映されます')
+    : push('miss',  '著者・監修者が未設定です', '上部のメタ情報欄で著者を入れると権威性シグナルが向上します');
+
+  (urls > 0 || sources > 0)
+    ? push('found', `出典・参照シグナルを検出`, `URL ${urls} 件 / 出典語 ${sources} 件`)
+    : push('miss',  '出典・参照が見当たりません', '主張には一次情報の出典（調査名＋URL）を添えると信頼性が上がります');
+
+  (pub || mod)
+    ? push('found', `日付情報あり（公開${pub||'—'} / 更新${mod||'—'}）`, '鮮度シグナルとして有効。構造化データにも反映されます')
+    : push('miss',  '公開日・更新日が未設定です', 'メタ情報欄で日付を入れると鮮度・信頼の手がかりになります');
+
+  // 信頼を毀損するシグナル（誇大表現）
+  const exagger = (t.match(/(最高級|絶対|必ず|100%|完全に|誰でも|永久に)/g) || []);
+  if (exagger.length) {
+    push('ngs', `根拠が必要な強表現を ${exagger.length} 件検出`, `例：${exagger.slice(0,3).map(h).join(' / ')}　— 出典がないと信頼性をむしろ下げます`);
+  }
+
+  document.getElementById('eeat-signals').innerHTML = sig.map(s => `
+    <div class="signal-row ${s.state}">
+      <span class="sig-ic">${s.state==='found'?'✓':s.state==='ngs'?'!':'○'}</span>
+      <span class="sig-txt"><b>${s.label}</b><span class="sig-meta">${s.meta}</span></span>
+    </div>`).join('');
+}
+
+// ============================================================
+// メタ情報・検索結果表示チェック
+// ============================================================
+function runMetaCheck(text) {
+  const issues = [];
+  const title = (document.getElementById('m-title').value || '').trim();
+  const desc  = (document.getElementById('m-desc').value  || '').trim();
+  const kwRaw = (document.getElementById('m-kw').value    || '').trim();
+  const url   = (document.getElementById('m-url').value   || '').trim();
+  const kws   = kwRaw ? kwRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  const body  = text.trim();
+
+  // title
+  if (!title) {
+    issues.push({ t:'warn', m:'ページタイトルが未入力です。メタ情報欄で設定すると診断できます' });
+  } else {
+    if (title.length > 32) issues.push({ t:'warn', m:`タイトルが長め（${title.length}字）。検索結果では約32字で省略されます` });
+    if (title.length < 15) issues.push({ t:'warn', m:`タイトルが短め（${title.length}字）。キーワードを補える余地があります` });
+    if (!/SHIRO/i.test(title)) issues.push({ t:'warn', m:'タイトルにブランド名「SHIRO」が含まれていません' });
+    kws.forEach(k => { if (k && !title.includes(k)) issues.push({ t:'warn', m:`主要KW「${k}」がタイトルに含まれていません` }); });
+  }
+
+  // description
+  if (!desc) {
+    issues.push({ t:'warn', m:'メタディスクリプションが未入力です' });
+  } else {
+    if (desc.length < 80)  issues.push({ t:'warn', m:`説明文が短め（${desc.length}字）。80〜120字が目安です` });
+    if (desc.length > 120) issues.push({ t:'warn', m:`説明文が長め（${desc.length}字）。120字超は末尾が省略されます` });
+    kws.forEach(k => { if (k && !desc.includes(k)) issues.push({ t:'warn', m:`主要KW「${k}」が説明文に含まれていません` }); });
+  }
+
+  // キーワード×本文整合（review memoryで最重要とされた観点）
+  kws.forEach(k => {
+    if (k && body && !body.includes(k)) {
+      issues.push({ t:'ng', m:`主要KW「${k}」が本文中に出現しません。KWと本文内容の不一致は最優先で要修正` });
+    }
+  });
+
+  // 見出し記号の簡易検出（プレーンテキスト中の見出しらしき行）
+  const heads = body.split('\n').filter(l => /^(#{1,3}\s|【.+】|■|◆|▼|第.+章)/.test(l.trim()));
+  if (body.length > 600 && heads.length === 0) {
+    issues.push({ t:'warn', m:'見出しらしき行が見当たりません。長文は見出し（H2/H3 相当）で構造化すると評価が上がります' });
+  }
+
+  if (url && !/^https?:\/\//.test(url)) {
+    issues.push({ t:'warn', m:'canonical URL は https:// から始まる絶対URLにしてください' });
+  }
+
+  const el = document.getElementById('seo-meta-issues');
+  el.innerHTML = issues.length === 0
+    ? '<div class="no-issues">✓ メタ情報・構造に大きな問題は見つかりませんでした</div>'
+    : issues.map(i => `
+      <div class="issue-row ${i.t}">
+        <span class="issue-tag">${i.t.toUpperCase()}</span>
+        <span>${h(i.m)}</span>
+      </div>`).join('');
+}
+
+// ============================================================
+// 構造化データ（JSON-LD）自動生成 — 雛形出力
+// ============================================================
+function toggleSdType(el) {
+  el.classList.toggle('on');
+  buildStructuredData();
+}
+
+function sdEscape(s){ return String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"'); }
+
+function buildStructuredData() {
+  const out = document.getElementById('sd-output');
+  const selected = [...document.querySelectorAll('.sd-chip.on')].map(c => c.dataset.t);
+  if (selected.length === 0) {
+    out.innerHTML = '<div class="sd-empty-hint">種別を1つ以上選択してください。</div>';
+    return;
+  }
+
+  const title  = (document.getElementById('m-title').value || '').trim();
+  const desc   = (document.getElementById('m-desc').value  || '').trim();
+  const url    = (document.getElementById('m-url').value   || '').trim();
+  const author = (document.getElementById('m-author').value|| '').trim();
+  const pub    = (document.getElementById('m-pubdate').value|| '').trim();
+  const mod    = (document.getElementById('m-moddate').value|| '').trim();
+  const price  = (document.getElementById('m-price').value || '').trim();
+  const avail  = (document.getElementById('m-avail').value || 'InStock').trim();
+  const body   = (document.getElementById('textA').value || document.getElementById('textB').value || '').trim();
+
+  const TODO = (label) => `__TODO__${label}__`;
+  const V = (val, todoLabel) => (val ? val : TODO(todoLabel));
+
+  const blocks = [];
+
+  selected.forEach(type => {
+    let obj;
+    if (type === 'Article') {
+      obj = {
+        "@context":"https://schema.org",
+        "@type":"Article",
+        "headline": V(title, "記事タイトル"),
+        "description": V(desc, "記事の説明文"),
+        "author": { "@type":"Person", "name": V(author, "著者名") },
+        "publisher": {
+          "@type":"Organization",
+          "name":"SHIRO",
+          "logo":{ "@type":"ImageObject", "url": TODO("ロゴ画像URL") }
+        },
+        "datePublished": V(pub, "公開日 YYYY-MM-DD"),
+        "dateModified": V(mod || pub, "更新日 YYYY-MM-DD"),
+        "mainEntityOfPage": V(url, "正規URL"),
+        "image": TODO("メイン画像URL")
+      };
+    } else if (type === 'Product') {
+      obj = {
+        "@context":"https://schema.org",
+        "@type":"Product",
+        "name": V(title, "製品名"),
+        "description": V(desc, "製品説明"),
+        "brand": { "@type":"Brand", "name":"SHIRO" },
+        "image": TODO("製品画像URL"),
+        "offers": {
+          "@type":"Offer",
+          "url": V(url, "製品ページURL"),
+          "priceCurrency":"JPY",
+          "price": price ? price.replace(/[^\d.]/g,'') : TODO("税込価格(数値)"),
+          "availability": "https://schema.org/" + avail
+        },
+        "aggregateRating": {
+          "@type":"AggregateRating",
+          "ratingValue": TODO("平均評価 例4.5"),
+          "reviewCount": TODO("レビュー件数")
+        }
+      };
+    } else if (type === 'FAQPage') {
+      // テキストから Q./A. ペアを抽出
+      const qa = extractFAQ(body);
+      obj = {
+        "@context":"https://schema.org",
+        "@type":"FAQPage",
+        "mainEntity": qa.length ? qa.map(p => ({
+          "@type":"Question",
+          "name": p.q,
+          "acceptedAnswer": { "@type":"Answer", "text": p.a }
+        })) : [{
+          "@type":"Question",
+          "name": TODO("質問文"),
+          "acceptedAnswer": { "@type":"Answer", "text": TODO("回答文") }
+        }]
+      };
+    } else if (type === 'BreadcrumbList') {
+      obj = {
+        "@context":"https://schema.org",
+        "@type":"BreadcrumbList",
+        "itemListElement":[
+          { "@type":"ListItem","position":1,"name":"ホーム","item":TODO("https://shiro-shiro.jp/") },
+          { "@type":"ListItem","position":2,"name":TODO("カテゴリ名"),"item":TODO("カテゴリURL") },
+          { "@type":"ListItem","position":3,"name": V(title,"ページ名"),"item": V(url,"ページURL") }
+        ]
+      };
+    } else if (type === 'Organization') {
+      obj = {
+        "@context":"https://schema.org",
+        "@type":"Organization",
+        "name":"SHIRO",
+        "url":"https://shiro-shiro.jp/",
+        "logo": TODO("ロゴ画像URL"),
+        "sameAs":[ TODO("公式SNS URL（任意・複数可）") ]
+      };
+    }
+    blocks.push(obj);
+  });
+
+  // JSON文字列化（TODOプレースホルダを後処理でコメント化）
+  const json = blocks.length === 1
+    ? JSON.stringify(blocks[0], null, 2)
+    : JSON.stringify(blocks, null, 2);
+
+  // <script>タグで包んだ形を出力
+  let final = json.replace(/"__TODO__(.+?)__"/g, '"TODO: $1 を入力"');
+
+  const scriptWrapped =
+    '<script type="application/ld+json">\n' + final + '\n<\/script>';
+
+  // 表示用にシンタックスハイライト（簡易）＋エスケープ
+  out.dataset.raw = scriptWrapped;
+  out.innerHTML = highlightJson(scriptWrapped);
+
+  // バッジ
+  const todoCount = (final.match(/TODO:/g) || []).length;
+  const sdBtn = document.getElementById('tab-btn-sd');
+  sdBtn.innerHTML = `構造化データ${todoCount > 0 ? `<span class="badge warn">${todoCount}</span>` : '<span class="badge" style="background:var(--ok-text)">✓</span>'}`;
+}
+
+// テキストから FAQ を抽出（Q. / A. 形式、Q：/A： 形式、Q1 形式に対応）
+function extractFAQ(body) {
+  if (!body) return [];
+  const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
+  const pairs = [];
+  let curQ = null;
+  const qRe = /^(Q[\.\:．：]?\d*[\.\:．：]?|質問[\.\:：]?|Ｑ[\.\:．：]?)\s*(.+)$/;
+  const aRe = /^(A[\.\:．：]?\d*[\.\:．：]?|回答[\.\:：]?|答え?[\.\:：]?|Ａ[\.\:．：]?)\s*(.+)$/;
+  lines.forEach(line => {
+    const qm = line.match(qRe);
+    const am = line.match(aRe);
+    if (qm) { curQ = qm[2].trim(); }
+    else if (am && curQ) { pairs.push({ q: curQ, a: am[2].trim() }); curQ = null; }
+  });
+  return pairs;
+}
+
+// 簡易 JSON シンタックスハイライト（表示専用・エスケープ込み）
+// h() は & < > のみ変換し " は変換しないため、" 基準でマッチする
+function highlightJson(str) {
+  const esc = h(str);
+  return esc
+    .replace(/("[^"]*?")(\s*:)/g, '<span class="k">$1</span>$2')       // keys
+    .replace(/:\s*("TODO:[^"]*?")/g, ': <span class="todo">$1</span>') // TODO値
+    .replace(/:\s*("(?!TODO:)[^"]*?")/g, ': <span class="s">$1</span>')// 文字列値
+    .replace(/:\s*(\d+(\.\d+)?)([,\n}])/g, ': <span class="n">$1</span>$3'); // 数値
+}
+
+function copySd() {
+  const out = document.getElementById('sd-output');
+  const raw = out.dataset.raw;
+  if (!raw) { showToast('生成された内容がありません'); return; }
+  navigator.clipboard.writeText(raw).then(
+    () => showToast('JSON-LD をコピーしました'),
+    () => {
+      // フォールバック
+      const ta = document.createElement('textarea');
+      ta.value = raw; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('JSON-LD をコピーしました'); }
+      catch(e){ showToast('コピーに失敗しました'); }
+      document.body.removeChild(ta);
+    }
+  );
+}
+
+// ============================================================
+// 指示書ダウンロード（差分 / メタ系 / 構造化データ）
+// ============================================================
+function buildDiffSection() {
+  const a = document.getElementById('textA').value;
+  const b = document.getElementById('textB').value;
+  const ops = lcsLines(a.split('\n'), b.split('\n'));
+  let eq = 0, del = 0, ins = 0, mod = 0;
+  const changes = [];
+  let la = 1, lb = 1;
+  ops.forEach(op => {
+    if (op.t === 'eq')       { eq++;  la++; lb++; }
+    else if (op.t === 'del') { del++; changes.push(`- 対象 行${la}: 削除「${op.a}」`); la++; }
+    else if (op.t === 'ins') { ins++; changes.push(`- 比較用 行${lb}: 追加「${op.b}」（対象に無し）`); lb++; }
+    else                     { mod++; changes.push(`- 対象 行${la}: 「${op.a}」→「${op.b}」`); la++; lb++; }
+  });
+  const sA = textStats(a), sB = textStats(b);
+  let out = `変更なし ${eq}行 / 変更 ${mod}行 / 削除 ${del}行 / 追加 ${ins}行\n\n`;
+  out += `| 区分 | 文字数 | 空白込み | 改行込み | 単語数 |\n|---|---|---|---|---|\n`;
+  out += `| チェック対象 | ${sA.visible} | ${sA.withSpace} | ${sA.withBreak} | ${sA.words} |\n`;
+  out += `| 比較用 | ${sB.visible} | ${sB.withSpace} | ${sB.withBreak} | ${sB.words} |\n\n`;
+  out += `### 変更箇所\n` + (changes.length ? changes.join('\n') : '差分はありません');
+  return out;
+}
+
+function buildMetaSection() {
+  const g = id => (document.getElementById(id).value || '').trim();
+  const selText = id => { const s = document.getElementById(id); return s.options[s.selectedIndex].text; };
+  const title = g('m-title'), desc = g('m-desc'), kw = g('m-kw'), url = g('m-url');
+  const author = g('m-author'), pub = g('m-pubdate'), modd = g('m-moddate'), price = g('m-price');
+
+  let out = `### 入力値\n`;
+  out += `- ページタイトル: ${title || '（未入力）'}${title ? `（${title.length}字）` : ''}\n`;
+  out += `- メタディスクリプション: ${desc || '（未入力）'}${desc ? `（${desc.length}字）` : ''}\n`;
+  out += `- 主要キーワード: ${kw || '（未入力）'}\n`;
+  out += `- 正規URL: ${url || '（未入力）'}\n`;
+  out += `- コンテンツ種別: ${selText('m-ctype')}\n`;
+  out += `- 著者・監修者: ${author || '（未入力）'}\n`;
+  out += `- 公開日 / 更新日: ${pub || '—'} / ${modd || '—'}\n`;
+  out += `- 価格 / 在庫: ${price || '—'} / ${selText('m-avail')}\n\n`;
+
+  out += `### メタ・検索結果チェック\n`;
+  const rows = [...document.querySelectorAll('#seo-meta-issues .issue-row')];
+  if (rows.length) {
+    out += rows.map(r => {
+      const tag = (r.querySelector('.issue-tag') || {}).textContent || '';
+      const msg = (r.querySelector('span:last-child') || {}).textContent || r.textContent;
+      return `- [${tag.trim()}] ${msg.trim()}`;
+    }).join('\n');
+  } else {
+    out += '問題は見つかりませんでした';
+  }
+  return out;
+}
+
+function buildSdSection() {
+  let raw = (document.getElementById('sd-output').dataset.raw || '').trim();
+  if (!raw) { buildStructuredData(); raw = (document.getElementById('sd-output').dataset.raw || '').trim(); }
+  if (!raw) return '構造化データは生成されていません（構造化データタブで種別を選択してください）。';
+  return '```html\n' + raw + '\n```\n\n> 注意: "TODO:..." の箇所は実値へ置換し、Google リッチリザルトテストで検証してください。';
+}
+
+function downloadInstructions() {
+  const a = document.getElementById('textA').value;
+  const b = document.getElementById('textB').value;
+  if (!a && !b) { showToast('テキストを入力してください'); return; }
+  runAll(); // 最新の分析結果に同期
+
+  const ver = (document.querySelector('header .ver') || {}).textContent || '';
+  const now = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const ts = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+  const fname = `SHIRO-Diff指示書_${now.getFullYear()}${p(now.getMonth()+1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}.md`;
+
+  const md = [
+    `# SHIRO Diff 指示書`, ``,
+    `- 生成日時: ${ts}`,
+    `- ツール: SHIRO Diff ${ver.trim()}`, ``,
+    `---`, ``,
+    `## 1. 差分情報`, ``, buildDiffSection(), ``,
+    `---`, ``,
+    `## 2. メタ系情報`, ``, buildMetaSection(), ``,
+    `---`, ``,
+    `## 3. 構造化データ（JSON-LD 雛形）`, ``, buildSdSection(), ``
+  ].join('\n');
+
+  downloadFile(fname, md);
+  showToast('指示書をダウンロードしました');
+}
+
+function downloadFile(filename, text) {
+  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('a');
+  el.href = url; el.download = filename;
+  document.body.appendChild(el); el.click();
+  document.body.removeChild(el); URL.revokeObjectURL(url);
+}
+
+let toastTimer;
+function showToast(msg) {
+  let el = document.getElementById('copy-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'copy-toast';
+    el.className = 'copy-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+// ============================================================
+// v007: 設定（localStorage・APIキーは任意保存）
+// ============================================================
+const LS_CONFIG = 'shiroDiffConfig_v007';
+const LS_RULECACHE = 'shiroDiffRuleCache_v007';
+// 既定の公開CSV URL（ユーザー提供のウェブ公開URL）。
+// 注: gid 無しは先頭シート1枚のみを返すため、正しくは各タブの
+//     "...&single=true&gid=<タブのgid>" を「SHIRO独自」「薬機法」へ設定すること。
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRKJ4C9NQ69MumDRNRhQFsx-OB2mDkiqsGdAlNmMnsw15hyXI_CugJ9LSq655_29mjyafKg4I89XL0H/pub?output=csv';
+
+function val(id){ const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; }
+
+function getConfig() {
+  return {
+    apikey:   val('s-apikey'),
+    model:    val('s-model') || 'claude-sonnet-4-6',
+    aimode:   val('s-aimode') || 'auto',
+    urlShiro: val('s-url-shiro'),
+    urlYakki: val('s-url-yakki'),
+    remember: !!(document.getElementById('s-remember') || {}).checked,
+  };
+}
+
+function loadConfig() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem(LS_CONFIG) || '{}'); } catch(e) { c = {}; }
+  document.getElementById('s-apikey').value    = c.apikey   || '';
+  document.getElementById('s-model').value     = c.model    || 'claude-sonnet-4-6';
+  document.getElementById('s-aimode').value    = c.aimode   || 'auto';
+  document.getElementById('s-url-shiro').value = c.urlShiro || DEFAULT_SHEET_URL;
+  document.getElementById('s-url-yakki').value = c.urlYakki || DEFAULT_SHEET_URL;
+  document.getElementById('s-remember').checked = !!c.remember;
+  updateSetHint();
+}
+
+function saveConfig() {
+  const c = getConfig();
+  updateSetHint();
+  if (c.remember) {
+    localStorage.setItem(LS_CONFIG, JSON.stringify(c));
+  } else {
+    // 保存しない設定では、URL/モデル等の利便値のみ保持しキーは消す
+    localStorage.setItem(LS_CONFIG, JSON.stringify({ ...c, apikey: '' }));
+  }
+}
+
+function updateSetHint() {
+  const c = getConfig();
+  const hint = document.getElementById('set-hint');
+  if (!hint) return;
+  hint.textContent = c.apikey && c.aimode === 'auto'
+    ? 'AI示唆 有効 — 比較・分析時にチェック対象を Anthropic API へ送信します'
+    : '任意 — APIキー未設定なら完全ローカル動作（外部送信なし）';
+}
+
+// ============================================================
+// v007: CSV 取得・解析（SHIRO独自 / 薬機法）
+// ============================================================
+// RFC4180 風 CSV パーサ（ダブルクォート・改行・カンマ対応）
+function parseCSV(text) {
+  const t = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const rows = []; let row = [], field = '', inQ = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inQ) {
+      if (ch === '"') { if (t[i+1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { row.push(field); field = ''; }
+      else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += ch;
+    }
+  }
+  row.push(field); rows.push(row);
+  // 完全な空行を除去
+  return rows.filter(r => r.some(c => (c || '').trim() !== ''));
+}
+
+function findCol(header, keys) {
+  return header.findIndex(h => { const x = (h||'').replace(/\s/g,''); return keys.some(k => x.includes(k)); });
+}
+
+// パース済み行を「薬機法」「SHIRO独自」「不明」に分類して適用。
+// 戻り値: { type, count } または { type:'unknown' }
+function classifySheet(rows) {
+  if (!rows.length) return { type: 'empty', count: 0 };
+  const header = rows[0].map(c => (c||'').trim());
+  const body = rows.slice(1);
+
+  const cNg  = findCol(header, ['NG表現','NG語','検出語']);
+  const cOk  = findCol(header, ['OK表現','OK語','言い換え']);
+  const cCat = findCol(header, ['NG区分','区分','分類','カテゴリ']);
+  const cFix = findCol(header, ['修正提案','修正','提案','OK表現','言い換え']);
+  const cDet = findCol(header, ['検出例','検出','NG表現','NG語','対象','例']);
+
+  // 薬機法シート: NG表現 + OK表現 が揃う
+  if (cNg >= 0 && cOk >= 0) {
+    const triples = [];
+    body.forEach(r => {
+      const ng = (r[cNg]||'').trim();
+      const ok = (r[cOk]||'').trim();
+      const cat = cCat >= 0 ? (r[cCat]||'').trim() : '';
+      if (ng) triples.push([ng, cat, ok]);
+    });
+    if (triples.length) {
+      YAKKIHOU = triples;
+      RULE_TEXT_YAKKI = triples.map(([n,c,o]) => `・「${n}」[${c||'-'}] → ${o||'(代替表現を提案)'}`).join('\n');
+      return { type: 'yakkihou', count: triples.length };
+    }
+  }
+
+  // SHIRO独自シート: 検出例(NG) + 区分 + 修正提案 を想定
+  if (cDet >= 0 && (cFix >= 0 || cCat >= 0)) {
+    const literals = [];
+    const texts = [];
+    body.forEach(r => {
+      const det = (r[cDet]||'').trim();
+      const fix = cFix >= 0 ? (r[cFix]||'').trim() : '';
+      const catRaw = cCat >= 0 ? (r[cCat]||'').trim() : '';
+      if (!det) return;
+      const sev = /WARN|警告|統一|ひらく|推奨/i.test(catRaw) ? 'warn' : (/NG|禁止|必須/i.test(catRaw) ? 'ng' : 'warn');
+      texts.push(`・「${det}」[${catRaw||sev}] → ${fix||'(修正提案)'}`);
+      // 「/」「、」区切りで複数語に対応。正規表現特殊文字はリテラル扱い。
+      det.split(/[\/、,｜|]/).map(s => s.trim()).filter(Boolean).forEach(term => {
+        if (term.length < 2) return; // 1文字語は誤検知が多いので除外
+        literals.push({
+          re: new RegExp(reEscape(term), 'g'),
+          fix: fix || '表記を見直してください',
+          label: `[SHIRO独自/${catRaw||'表記'}]「${term}」`,
+          sev,
+        });
+      });
+    });
+    if (literals.length) {
+      // 内蔵の高度な正規表現ルール + シート由来リテラルルールを合成
+      SHIRO_RULES = EMBEDDED_SHIRO_RULES.concat(literals);
+      RULE_TEXT_SHIRO = texts.join('\n');
+      return { type: 'shiro', count: literals.length };
+    }
+  }
+
+  return { type: 'unknown', count: 0, header };
+}
+
+let RULE_SRC_STATE = { shiro: 'embedded', yakki: 'embedded', at: null };
+
+function updateRuleSrcPill() {
+  const el = document.getElementById('rule-src');
+  if (!el) return;
+  const s = RULE_SRC_STATE;
+  el.className = 'src-pill';
+  if (s.loading) { el.classList.add('loading'); el.textContent = 'ルール: シート取得中…'; return; }
+  const parts = [];
+  parts.push(`SHIRO独自: ${s.shiro === 'sheet' ? 'シート' : s.shiro === 'cache' ? 'キャッシュ' : '内蔵'} ${SHIRO_RULES.length}件`);
+  parts.push(`薬機法: ${s.yakki === 'sheet' ? 'シート' : s.yakki === 'cache' ? 'キャッシュ' : '内蔵'} ${YAKKIHOU.length}件`);
+  const anySheet = s.shiro === 'sheet' || s.yakki === 'sheet';
+  const anyCache = s.shiro === 'cache' || s.yakki === 'cache';
+  el.classList.add(anySheet ? 'sheet' : anyCache ? 'cache' : 'embedded');
+  el.textContent = 'ルール｜' + parts.join(' / ') + (s.at ? `（${s.at}）` : '');
+}
+
+async function fetchOne(url) {
+  if (!url) return null;
+  const res = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.text();
+}
+
+// シートからルールを取得して適用。manual=true は手動ボタン（トースト通知あり）。
+async function fetchSheetRules(manual) {
+  const c = getConfig();
+  RULE_SRC_STATE.loading = true; updateRuleSrcPill();
+
+  const urls = [];
+  if (c.urlShiro) urls.push(c.urlShiro);
+  if (c.urlYakki && c.urlYakki !== c.urlShiro) urls.push(c.urlYakki);
+
+  let got = { shiro: false, yakki: false };
+  const rawCache = {};
+  for (const url of urls) {
+    try {
+      const csv = await fetchOne(url);
+      const cls = classifySheet(parseCSV(csv));
+      if (cls.type === 'yakkihou') { got.yakki = true; RULE_SRC_STATE.yakki = 'sheet'; rawCache.yakki = csv; }
+      else if (cls.type === 'shiro') { got.shiro = true; RULE_SRC_STATE.shiro = 'sheet'; rawCache.shiro = csv; }
+      // unknown は無視（既存ルールを壊さない）
+    } catch (e) {
+      // CORS/オフライン等。フォールバック維持。
+    }
+  }
+
+  RULE_SRC_STATE.loading = false;
+  rebuildRules();
+
+  if (got.shiro || got.yakki) {
+    RULE_SRC_STATE.at = new Date().toLocaleString('ja-JP', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    try {
+      localStorage.setItem(LS_RULECACHE, JSON.stringify({
+        at: RULE_SRC_STATE.at,
+        shiroText: RULE_TEXT_SHIRO, yakkiText: RULE_TEXT_YAKKI,
+        shiroRules: got.shiro ? SHIRO_RULES.filter(r => /SHIRO独自/.test(r.label)).map(r => ({ s: r.re.source, fix: r.fix, label: r.label, sev: r.sev })) : null,
+        yakkihou: got.yakki ? YAKKIHOU : null,
+      }));
+    } catch(e) {}
+    if (manual) showToast(`シートからルールを取得しました（SHIRO独自 ${SHIRO_RULES.length} / 薬機法 ${YAKKIHOU.length}）`);
+  } else if (manual) {
+    showToast('シート取得に失敗（公開URL/CORSを確認）。内蔵ルールで継続します');
+  }
+  updateRuleSrcPill();
+  return got;
+}
+
+// キャッシュからの即時復元（起動時）
+function loadRuleCache() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem(LS_RULECACHE) || 'null'); } catch(e) {}
+  if (!c) return;
+  if (c.yakkihou && c.yakkihou.length) { YAKKIHOU = c.yakkihou; RULE_SRC_STATE.yakki = 'cache'; RULE_TEXT_YAKKI = c.yakkiText || ''; }
+  if (c.shiroRules && c.shiroRules.length) {
+    const lits = c.shiroRules.map(r => ({ re: new RegExp(r.s, 'g'), fix: r.fix, label: r.label, sev: r.sev }));
+    SHIRO_RULES = EMBEDDED_SHIRO_RULES.concat(lits); RULE_SRC_STATE.shiro = 'cache'; RULE_TEXT_SHIRO = c.shiroText || '';
+  }
+  RULE_SRC_STATE.at = c.at || null;
+  rebuildRules();
+}
+
+// ============================================================
+// v007: AI 示唆（Claude API・オプトイン）
+// ============================================================
+function maybeRunAI(target) {
+  const c = getConfig();
+  const block = document.getElementById('ai-block');
+  if (!c.apikey || c.aimode === 'off' || !target || !target.trim()) {
+    if (block) block.style.display = 'none';
+    return;
+  }
+  block.style.display = 'block';
+  const list = document.getElementById('ai-list');
+  document.getElementById('ai-status').textContent = '';
+  list.innerHTML = '<div class="ai-loading"><span class="ai-spinner"></span>AI が文脈チェック中…（モデル: ' + h(c.model) + '）</div>';
+  runAI(target, c).then(findings => renderAI(findings))
+    .catch(err => {
+      list.innerHTML = '<div class="ai-err">AI 示唆を取得できませんでした：' + h(err.message || String(err)) +
+        '<br>（APIキー・モデル名・ネットワーク／CORS をご確認ください。機械判定の結果は上に表示済みです）</div>';
+      document.getElementById('ai-status').textContent = '';
+    });
+}
+
+function buildAIPrompt(target) {
+  const numbered = target.split('\n').map((l, i) => `${i+1}: ${l}`).join('\n');
+  const shiroRules = RULE_TEXT_SHIRO || '（シート未取得。内蔵の表記・ブランドルールに準拠）';
+  const yakkiRules = RULE_TEXT_YAKKI || EMBEDDED_YAKKIHOU.map(([n,c,o]) => `・「${n}」[${c}] → ${o}`).join('\n');
+  return `以下はSHIROの校正ルール（正本）です。これに【厳密準拠】してチェック対象テキストを校正してください。
+
+# ブランド・表記ルール（SHIRO独自）
+${shiroRules}
+
+# 薬機法 NG表現リスト（化粧品で使用不可・OK表現へ言い換え）
+${yakkiRules}
+
+# 指示
+- 上記ルールの【表記揺れ】（語尾の活用・送り仮名違い・部分一致・言い回しの違い）も検出する。例:「シミを消す」に対し「シミが消える」「シミがなくなる」等。
+- ルールに無い独自基準の創作はしない。各指摘には根拠となるルールを rule に明記する。
+- URL内の文字列やコード断片は対象外。
+- line は下記の行番号（1始まり）を使う。text は実際に検出した該当文字列。
+- severity は薬機法・ブランド誤表記・誤情報は "ng"、表記統一系は "warn"。
+- 確実なものだけを挙げ、推測や過剰検出は避ける。
+
+# チェック対象テキスト（行番号付き）
+${numbered}`;
+}
+
+async function runAI(target, cfg) {
+  const body = {
+    model: cfg.model,
+    max_tokens: 4096,
+    temperature: 0.2,
+    system: 'あなたはSHIROの校正担当者です。提示されたブランド表記ルールと薬機法NG表現リストにのみ基づいて、化粧品・コスメ文脈で校正を行います。ルールにない独自判断は加えません。必ず report_findings ツールで構造化して返答します。',
+    tools: [{
+      name: 'report_findings',
+      description: 'ルール違反・要修正箇所を構造化して報告する',
+      input_schema: {
+        type: 'object',
+        properties: {
+          findings: {
+            type: 'array',
+            description: '検出した指摘の配列（無ければ空配列）',
+            items: {
+              type: 'object',
+              properties: {
+                line: { type: 'integer', description: '該当行番号（1始まり）' },
+                text: { type: 'string', description: '検出した該当文字列' },
+                severity: { type: 'string', enum: ['ng','warn'] },
+                rule: { type: 'string', description: '根拠ルール（例: 薬機法/治療表現、SHIRO独自/ブランド）' },
+                suggestion: { type: 'string', description: '修正提案（OK表現）' },
+                reason: { type: 'string', description: '理由の簡潔な説明' }
+              },
+              required: ['line','text','severity','suggestion','reason']
+            }
+          }
+        },
+        required: ['findings']
+      }
+    }],
+    tool_choice: { type: 'tool', name: 'report_findings' },
+    messages: [{ role: 'user', content: buildAIPrompt(target) }]
+  };
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': cfg.apikey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    let msg = 'HTTP ' + res.status;
+    try { const j = await res.json(); if (j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e) {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  const tu = (data.content || []).find(b => b.type === 'tool_use');
+  const findings = tu && tu.input && Array.isArray(tu.input.findings) ? tu.input.findings : [];
+  return findings;
+}
+
+function renderAI(findings) {
+  const list = document.getElementById('ai-list');
+  const status = document.getElementById('ai-status');
+  if (!findings || findings.length === 0) {
+    list.innerHTML = '<div class="no-issues">✓ AI でも追加の指摘は見つかりませんでした</div>';
+    status.textContent = '0件';
+    return;
+  }
+  findings.sort((a, b) => (a.severity === b.severity) ? (a.line||0) - (b.line||0) : (a.severity === 'ng' ? -1 : 1));
+  const ngN = findings.filter(f => f.severity === 'ng').length;
+  const warnN = findings.filter(f => f.severity === 'warn').length;
+  status.innerHTML = `<span class="ng-c" style="color:var(--ng-text)">NG ${ngN}</span> / <span class="warn-c" style="color:var(--warn-text)">WARN ${warnN}</span>`;
+  list.innerHTML = '<div class="reg-list">' + findings.map(f => {
+    const sev = f.severity === 'ng' ? 'ng' : 'warn';
+    return `<div class="reg-row ${sev}">
+      <span class="rln">${Number.isInteger(f.line) ? f.line + '行' : '—'}</span>
+      <span class="rmsg">
+        <strong class="${sev}">${h(f.rule || (sev === 'ng' ? '要修正' : '表記確認'))}<span class="rai-badge">AI</span></strong>
+        検出: <span class="rmatch">${h(f.text || '')}</span>
+        ${f.reason ? `<span class="rreason">${h(f.reason)}</span>` : ''}
+      </span>
+      <span class="rfix">→ ${h(f.suggestion || '')}</span>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// ============================================================
+// v007: 初期化
+// ============================================================
+(function initV007() {
+  loadConfig();
+  loadRuleCache();      // キャッシュがあれば即時反映
+  updateRuleSrcPill();
+  // 入力変更で設定を保存／ヒント更新
+  ['s-apikey','s-model','s-aimode','s-url-shiro','s-url-yakki','s-remember'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', saveConfig);
+  });
+  document.getElementById('s-apikey').addEventListener('input', updateSetHint);
+  document.getElementById('s-aimode').addEventListener('input', updateSetHint);
+  // 起動時にシートから自動取得（失敗時はキャッシュ／内蔵を維持）
+  fetchSheetRules(false);
+})();
+</script>
+</body>
+</html>

@@ -745,7 +745,7 @@ code {
         </div>
       </div>
       <div class="set-row">
-        <label class="set-check"><input type="checkbox" id="s-remember"> 設定をこの端末に保存（APIキー含む・共用PCでは非推奨）</label>
+        <label class="set-check"><input type="checkbox" id="s-remember" checked> 設定をこの端末に保存（APIキー含む・共用PCでは非推奨）</label>
         <button class="btn btn-ghost" onclick="fetchSheetRules(true)">シートから最新取得</button>
         <span class="src-pill" id="rule-src">ルール: 読み込み中…</span>
       </div>
@@ -2186,7 +2186,8 @@ function loadConfig() {
   document.getElementById('s-aimode').value    = c.aimode   || 'auto';
   document.getElementById('s-url-shiro').value = c.urlShiro || DEFAULT_URL_SHIRO;
   document.getElementById('s-url-yakki').value = c.urlYakki || DEFAULT_URL_YAKKI;
-  document.getElementById('s-remember').checked = !!c.remember;
+  // 既定ON（明示的に false 保存された場合のみ OFF）。初回入力後は自動復元される。
+  document.getElementById('s-remember').checked = c.remember !== false;
   updateSetHint();
 }
 

@@ -2159,10 +2159,11 @@ function showToast(msg) {
 // ============================================================
 const LS_CONFIG = 'shiroDiffConfig_v007';
 const LS_RULECACHE = 'shiroDiffRuleCache_v007';
-// 既定の公開CSV URL（ユーザー提供のウェブ公開URL）。
-// 注: gid 無しは先頭シート1枚のみを返すため、正しくは各タブの
-//     "...&single=true&gid=<タブのgid>" を「SHIRO独自」「薬機法」へ設定すること。
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRKJ4C9NQ69MumDRNRhQFsx-OB2mDkiqsGdAlNmMnsw15hyXI_CugJ9LSq655_29mjyafKg4I89XL0H/pub?output=csv';
+// 既定の公開CSV URL（ウェブに公開／タブ別 gid 付き）。
+//   SHIRO独自 gid=0 / 薬機法 gid=57508041
+const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRKJ4C9NQ69MumDRNRhQFsx-OB2mDkiqsGdAlNmMnsw15hyXI_CugJ9LSq655_29mjyafKg4I89XL0H/pub';
+const DEFAULT_URL_SHIRO = PUB_BASE + '?gid=0&single=true&output=csv';
+const DEFAULT_URL_YAKKI = PUB_BASE + '?gid=57508041&single=true&output=csv';
 
 function val(id){ const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; }
 
@@ -2183,8 +2184,8 @@ function loadConfig() {
   document.getElementById('s-apikey').value    = c.apikey   || '';
   document.getElementById('s-model').value     = c.model    || 'claude-sonnet-4-6';
   document.getElementById('s-aimode').value    = c.aimode   || 'auto';
-  document.getElementById('s-url-shiro').value = c.urlShiro || DEFAULT_SHEET_URL;
-  document.getElementById('s-url-yakki').value = c.urlYakki || DEFAULT_SHEET_URL;
+  document.getElementById('s-url-shiro').value = c.urlShiro || DEFAULT_URL_SHIRO;
+  document.getElementById('s-url-yakki').value = c.urlYakki || DEFAULT_URL_YAKKI;
   document.getElementById('s-remember').checked = !!c.remember;
   updateSetHint();
 }
@@ -2237,66 +2238,67 @@ function findCol(header, keys) {
   return header.findIndex(h => { const x = (h||'').replace(/\s/g,''); return keys.some(k => x.includes(k)); });
 }
 
-// パース済み行を「薬機法」「SHIRO独自」「不明」に分類して適用。
-// 戻り値: { type, count } または { type:'unknown' }
-function classifySheet(rows) {
-  if (!rows.length) return { type: 'empty', count: 0 };
+// 行から AI 用の生テキスト（ヘッダー含む簡易表）を作る。列解析が外れても
+// シート内容そのものを AI に渡せるようにするためのフォールバック。
+function rowsToText(rows, max) {
+  return rows.slice(0, max || 200).map(r => r.map(c => (c||'').trim()).join(' | ')).filter(Boolean).join('\n');
+}
+
+// 「薬機法」タブを適用：列 NG表現 / NG区分 / OK表現（無ければ位置 0/1/2）
+function applyYakkiRows(rows) {
+  if (!rows.length) return 0;
   const header = rows[0].map(c => (c||'').trim());
-  const body = rows.slice(1);
+  let cNg  = findCol(header, ['NG表現','NG語','検出語','検出例']);
+  let cOk  = findCol(header, ['OK表現','OK語','言い換え','修正提案']);
+  let cCat = findCol(header, ['NG区分','区分','分類','カテゴリ']);
+  let body = rows.slice(1);
+  if (cNg < 0) { cNg = 0; cCat = cCat < 0 ? 1 : cCat; cOk = cOk < 0 ? 2 : cOk; body = rows; } // ヘッダー無し位置フォールバック
+  const triples = [];
+  body.forEach(r => {
+    const ng = (r[cNg]||'').trim();
+    if (!ng || /^NG表現$/.test(ng)) return;
+    triples.push([ng, cCat >= 0 ? (r[cCat]||'').trim() : '', cOk >= 0 ? (r[cOk]||'').trim() : '']);
+  });
+  if (!triples.length) return 0;
+  YAKKIHOU = triples;
+  RULE_TEXT_YAKKI = triples.map(([n,c,o]) => `・「${n}」[${c||'-'}] → ${o||'(代替表現を提案)'}`).join('\n');
+  return triples.length;
+}
 
-  const cNg  = findCol(header, ['NG表現','NG語','検出語']);
-  const cOk  = findCol(header, ['OK表現','OK語','言い換え']);
-  const cCat = findCol(header, ['NG区分','区分','分類','カテゴリ']);
-  const cFix = findCol(header, ['修正提案','修正','提案','OK表現','言い換え']);
-  const cDet = findCol(header, ['検出例','検出','NG表現','NG語','対象','例']);
-
-  // 薬機法シート: NG表現 + OK表現 が揃う
-  if (cNg >= 0 && cOk >= 0) {
-    const triples = [];
-    body.forEach(r => {
-      const ng = (r[cNg]||'').trim();
-      const ok = (r[cOk]||'').trim();
-      const cat = cCat >= 0 ? (r[cCat]||'').trim() : '';
-      if (ng) triples.push([ng, cat, ok]);
-    });
-    if (triples.length) {
-      YAKKIHOU = triples;
-      RULE_TEXT_YAKKI = triples.map(([n,c,o]) => `・「${n}」[${c||'-'}] → ${o||'(代替表現を提案)'}`).join('\n');
-      return { type: 'yakkihou', count: triples.length };
-    }
+// 「SHIRO独自」タブを適用：列 検出例(NG) / 区分 / 修正提案（柔軟・位置フォールバックあり）
+function applyShiroRows(rows) {
+  if (!rows.length) return 0;
+  const header = rows[0].map(c => (c||'').trim());
+  let cDet = findCol(header, ['検出例','検出','NG表現','NG語','対象','例','表記']);
+  let cFix = findCol(header, ['修正提案','修正','提案','OK表現','言い換え','正']);
+  let cCat = findCol(header, ['区分','分類','カテゴリ','種別']);
+  let body = rows.slice(1);
+  if (cDet < 0) { // ヘッダー判別不可：分類/検出例/区分/修正提案 の4列想定で位置フォールバック
+    cDet = header.length >= 4 ? 1 : 0; cCat = header.length >= 4 ? 2 : 1; cFix = header.length >= 4 ? 3 : 2; body = rows;
   }
-
-  // SHIRO独自シート: 検出例(NG) + 区分 + 修正提案 を想定
-  if (cDet >= 0 && (cFix >= 0 || cCat >= 0)) {
-    const literals = [];
-    const texts = [];
-    body.forEach(r => {
-      const det = (r[cDet]||'').trim();
-      const fix = cFix >= 0 ? (r[cFix]||'').trim() : '';
-      const catRaw = cCat >= 0 ? (r[cCat]||'').trim() : '';
-      if (!det) return;
-      const sev = /WARN|警告|統一|ひらく|推奨/i.test(catRaw) ? 'warn' : (/NG|禁止|必須/i.test(catRaw) ? 'ng' : 'warn');
-      texts.push(`・「${det}」[${catRaw||sev}] → ${fix||'(修正提案)'}`);
-      // 「/」「、」区切りで複数語に対応。正規表現特殊文字はリテラル扱い。
-      det.split(/[\/、,｜|]/).map(s => s.trim()).filter(Boolean).forEach(term => {
-        if (term.length < 2) return; // 1文字語は誤検知が多いので除外
-        literals.push({
-          re: new RegExp(reEscape(term), 'g'),
-          fix: fix || '表記を見直してください',
-          label: `[SHIRO独自/${catRaw||'表記'}]「${term}」`,
-          sev,
-        });
+  const literals = [], texts = [];
+  body.forEach(r => {
+    const det = (r[cDet]||'').trim();
+    if (!det || /検出例|NG表現/.test(det)) return;
+    const fix = cFix >= 0 ? (r[cFix]||'').trim() : '';
+    const catRaw = cCat >= 0 ? (r[cCat]||'').trim() : '';
+    const sev = /WARN|警告|統一|ひらく|推奨/i.test(catRaw) ? 'warn' : (/NG|禁止|必須|薬機/i.test(catRaw) ? 'ng' : 'warn');
+    texts.push(`・「${det}」[${catRaw||sev}] → ${fix||'(修正提案)'}`);
+    det.split(/[\/、,｜|]/).map(s => s.trim()).filter(Boolean).forEach(term => {
+      if (term.length < 2) return; // 1文字語は誤検知が多いので除外
+      literals.push({
+        re: new RegExp(reEscape(term), 'g'),
+        fix: fix || '表記を見直してください',
+        label: `[SHIRO独自/${catRaw||'表記'}]「${term}」`,
+        sev,
       });
     });
-    if (literals.length) {
-      // 内蔵の高度な正規表現ルール + シート由来リテラルルールを合成
-      SHIRO_RULES = EMBEDDED_SHIRO_RULES.concat(literals);
-      RULE_TEXT_SHIRO = texts.join('\n');
-      return { type: 'shiro', count: literals.length };
-    }
-  }
-
-  return { type: 'unknown', count: 0, header };
+  });
+  // 内蔵の高度な正規表現ルール + シート由来リテラルルールを合成
+  SHIRO_RULES = EMBEDDED_SHIRO_RULES.concat(literals);
+  // 列解析が空振りでも、AI には生テキストでシート内容を渡す
+  RULE_TEXT_SHIRO = texts.length ? texts.join('\n') : rowsToText(rows);
+  return literals.length || (texts.length ? 1 : 0);
 }
 
 let RULE_SRC_STATE = { shiro: 'embedded', yakki: 'embedded', at: null };
@@ -2328,22 +2330,13 @@ async function fetchSheetRules(manual) {
   const c = getConfig();
   RULE_SRC_STATE.loading = true; updateRuleSrcPill();
 
-  const urls = [];
-  if (c.urlShiro) urls.push(c.urlShiro);
-  if (c.urlYakki && c.urlYakki !== c.urlShiro) urls.push(c.urlYakki);
-
   let got = { shiro: false, yakki: false };
-  const rawCache = {};
-  for (const url of urls) {
-    try {
-      const csv = await fetchOne(url);
-      const cls = classifySheet(parseCSV(csv));
-      if (cls.type === 'yakkihou') { got.yakki = true; RULE_SRC_STATE.yakki = 'sheet'; rawCache.yakki = csv; }
-      else if (cls.type === 'shiro') { got.shiro = true; RULE_SRC_STATE.shiro = 'sheet'; rawCache.shiro = csv; }
-      // unknown は無視（既存ルールを壊さない）
-    } catch (e) {
-      // CORS/オフライン等。フォールバック維持。
-    }
+  // 役割別に取得（gid でタブが特定済み）。失敗時はフォールバック維持。
+  if (c.urlShiro) {
+    try { if (applyShiroRows(parseCSV(await fetchOne(c.urlShiro))) > 0) { got.shiro = true; RULE_SRC_STATE.shiro = 'sheet'; } } catch (e) {}
+  }
+  if (c.urlYakki) {
+    try { if (applyYakkiRows(parseCSV(await fetchOne(c.urlYakki))) > 0) { got.yakki = true; RULE_SRC_STATE.yakki = 'sheet'; } } catch (e) {}
   }
 
   RULE_SRC_STATE.loading = false;
